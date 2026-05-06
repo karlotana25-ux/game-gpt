@@ -1,0 +1,679 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Echoes of the Tavern Star</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-deep: #071017;
+      --bg-mid: #0f2b34;
+      --bg-bright: #20505d;
+      --panel: rgba(8, 21, 28, 0.9);
+      --panel-bright: rgba(20, 46, 56, 0.95);
+      --text-main: #effff4;
+      --text-soft: #bcebd6;
+      --accent-a: #f8ca62;
+      --accent-b: #59d9be;
+      --accent-c: #ff8a5b;
+      --danger: #ff6262;
+      --ok: #8fff7b;
+      --pixel-border: 0 0 0 2px #d9f2e2, 0 0 0 5px #122d37;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      color: var(--text-main);
+      background:
+        radial-gradient(circle at 15% 18%, rgba(57, 121, 137, 0.34), transparent 30%),
+        radial-gradient(circle at 85% 70%, rgba(237, 127, 88, 0.20), transparent 28%),
+        linear-gradient(175deg, var(--bg-mid), var(--bg-deep));
+      font-family: "VT323", monospace;
+      letter-spacing: 0.2px;
+    }
+
+    #game-root {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+    }
+
+    #scene-container {
+      position: absolute;
+      inset: 0;
+      z-index: 1;
+    }
+
+    #scene-container canvas {
+      width: 100%;
+      height: 100%;
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+      display: block;
+    }
+
+    #ui-layer {
+      position: absolute;
+      inset: 0;
+      z-index: 20;
+      pointer-events: none;
+      padding: 20px;
+    }
+
+    .screen {
+      display: none;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+    }
+
+    .screen.active {
+      display: flex;
+      pointer-events: none;
+    }
+
+    .center-screen {
+      align-items: center;
+      justify-content: center;
+    }
+
+    .panel {
+      pointer-events: auto;
+      background: linear-gradient(180deg, rgba(20, 54, 64, 0.95), var(--panel));
+      box-shadow: var(--pixel-border), 0 16px 30px rgba(0, 0, 0, 0.45);
+      border-radius: 6px;
+      padding: 18px;
+      max-width: 950px;
+      width: min(95vw, 950px);
+      max-height: 95vh;
+      overflow: auto;
+      backdrop-filter: blur(4px);
+    }
+
+    .hero-title {
+      margin: 0 0 12px;
+      color: var(--accent-a);
+      text-shadow: 2px 2px 0 #193338;
+      line-height: 1.35;
+      font-size: clamp(16px, 3vw, 32px);
+      font-family: "Press Start 2P", monospace;
+    }
+
+    .subtitle {
+      margin: 0 0 14px;
+      color: var(--text-soft);
+      font-size: clamp(18px, 3vw, 28px);
+    }
+
+    .menu-actions,
+    .row-actions {
+      display: grid;
+      gap: 10px;
+    }
+
+    .menu-actions {
+      grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+      margin-top: 12px;
+    }
+
+    button {
+      border: none;
+      background: linear-gradient(180deg, #2f7c88, #1c5461);
+      color: var(--text-main);
+      padding: 10px 12px;
+      font: inherit;
+      font-size: 24px;
+      border-radius: 4px;
+      cursor: pointer;
+      box-shadow: 0 0 0 2px rgba(214, 254, 236, 0.85), 0 0 0 4px #163841;
+      transition: transform 90ms ease, filter 120ms ease;
+    }
+
+    button:hover {
+      filter: brightness(1.12);
+      transform: translateY(-1px);
+    }
+
+    button:active {
+      transform: translateY(1px);
+    }
+
+    button.secondary {
+      background: linear-gradient(180deg, #6e6c74, #41434d);
+    }
+
+    button.warning {
+      background: linear-gradient(180deg, #b66b52, #7f3f2f);
+    }
+
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
+      filter: none;
+    }
+
+    .creation-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+
+    .block {
+      background: linear-gradient(180deg, rgba(25, 64, 75, 0.96), rgba(14, 36, 43, 0.96));
+      border-radius: 6px;
+      padding: 12px;
+      box-shadow: inset 0 0 0 2px rgba(191, 235, 213, 0.18);
+    }
+
+    label {
+      font-size: 22px;
+      color: var(--text-soft);
+    }
+
+    input[type="text"] {
+      width: 100%;
+      border: none;
+      border-radius: 4px;
+      margin-top: 8px;
+      padding: 8px 10px;
+      background: #163640;
+      color: var(--text-main);
+      font: inherit;
+      font-size: 24px;
+      box-shadow: inset 0 0 0 2px rgba(203, 255, 232, 0.3);
+    }
+
+    .class-options {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
+      gap: 8px;
+      margin-top: 10px;
+    }
+
+    .class-card {
+      border: none;
+      text-align: left;
+      padding: 10px;
+      border-radius: 5px;
+      background: linear-gradient(180deg, rgba(63, 121, 131, 0.95), rgba(31, 71, 80, 0.95));
+      box-shadow: 0 0 0 2px rgba(218, 250, 237, 0.6);
+    }
+
+    .class-card strong {
+      display: block;
+      font-family: "Press Start 2P", monospace;
+      font-size: 12px;
+      margin-bottom: 7px;
+      line-height: 1.35;
+    }
+
+    .class-card span {
+      font-size: 20px;
+      color: #ddfbe8;
+    }
+
+    .class-card.selected {
+      background: linear-gradient(180deg, #f7bc53, #a86732);
+      color: #1e1212;
+      box-shadow: 0 0 0 2px #fff7cb, 0 0 0 4px #8a4a25;
+    }
+
+    .class-card.selected span {
+      color: #2b1a1a;
+    }
+
+    .stat-grid {
+      display: grid;
+      gap: 8px;
+      margin-top: 8px;
+    }
+
+    .stat-row {
+      display: grid;
+      grid-template-columns: 1fr 48px 64px 48px;
+      align-items: center;
+      gap: 8px;
+      background: rgba(7, 18, 24, 0.5);
+      border-radius: 4px;
+      padding: 5px 6px;
+    }
+
+    .stat-name {
+      color: #d5f6e7;
+      font-size: 21px;
+    }
+
+    .stat-val {
+      text-align: center;
+      font-size: 28px;
+      color: #fff5d2;
+    }
+
+    .stat-btn {
+      padding: 6px;
+      font-size: 22px;
+      line-height: 1;
+    }
+
+    .stat-desc {
+      color: #c3ecd8;
+      margin: 5px 0 0;
+      font-size: 19px;
+    }
+
+    .hub-layout {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+    }
+
+    .hud-statline {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      font-size: 24px;
+      color: #d7f8e8;
+    }
+
+    .party-roster {
+      display: grid;
+      gap: 8px;
+      margin-top: 8px;
+    }
+
+    .party-member {
+      background: rgba(13, 28, 38, 0.76);
+      border-radius: 4px;
+      padding: 8px;
+      box-shadow: inset 0 0 0 2px rgba(206, 247, 230, 0.24);
+    }
+
+    .party-member strong {
+      color: #ffefb9;
+      display: block;
+      margin-bottom: 4px;
+      font-size: 22px;
+    }
+
+    .party-member small {
+      color: #d1f2e1;
+      font-size: 19px;
+      display: block;
+    }
+
+    .room-list,
+    .shop-list {
+      display: grid;
+      gap: 8px;
+      margin-top: 8px;
+    }
+
+    .room-item,
+    .shop-item {
+      background: rgba(12, 29, 37, 0.9);
+      border-radius: 4px;
+      padding: 9px;
+      display: grid;
+      gap: 6px;
+    }
+
+    .room-item strong,
+    .shop-item strong {
+      font-size: 22px;
+      color: #ffe7af;
+    }
+
+    .room-item span,
+    .shop-item span {
+      color: #cbecd9;
+      font-size: 20px;
+    }
+
+    .shop-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    select,
+    input[type="range"] {
+      width: 100%;
+      font: inherit;
+      font-size: 23px;
+      background: #163640;
+      border: none;
+      border-radius: 4px;
+      color: var(--text-main);
+      padding: 7px;
+      box-shadow: inset 0 0 0 2px rgba(208, 248, 231, 0.32);
+    }
+
+    .battle-layout {
+      display: grid;
+      grid-template-columns: 1.2fr 1fr;
+      gap: 12px;
+    }
+
+    .battle-log {
+      height: 220px;
+      overflow: auto;
+      background: rgba(10, 20, 28, 0.86);
+      border-radius: 5px;
+      padding: 8px;
+      box-shadow: inset 0 0 0 2px rgba(185, 236, 211, 0.22);
+      font-size: 20px;
+      color: #e9faef;
+      display: grid;
+      gap: 4px;
+    }
+
+    .battle-actions {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(110px, 1fr));
+      gap: 10px;
+      margin-top: 10px;
+    }
+
+    .enemy-banner {
+      font-size: 24px;
+      color: #ffd4b0;
+      margin: 6px 0;
+    }
+
+    .hp-bar {
+      width: 100%;
+      height: 14px;
+      border-radius: 100px;
+      background: rgba(5, 13, 18, 0.8);
+      overflow: hidden;
+      box-shadow: inset 0 0 0 2px rgba(205, 242, 225, 0.2);
+    }
+
+    .hp-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #66ee87, #c5ff7a);
+      transition: width 180ms linear;
+    }
+
+    .screen-hud {
+      align-items: flex-start;
+      justify-content: flex-end;
+    }
+
+    .hud-panel {
+      width: min(380px, 95vw);
+      pointer-events: auto;
+      background: linear-gradient(180deg, rgba(17, 41, 51, 0.95), rgba(8, 20, 28, 0.96));
+      border-radius: 6px;
+      box-shadow: var(--pixel-border), 0 10px 26px rgba(0, 0, 0, 0.38);
+      padding: 12px;
+    }
+
+    .hud-panel h3 {
+      margin: 0;
+      color: #ffe7af;
+      font-family: "Press Start 2P", monospace;
+      font-size: 12px;
+      line-height: 1.4;
+    }
+
+    .hud-panel p {
+      margin: 8px 0;
+      font-size: 22px;
+      color: #dcf9ea;
+    }
+
+    .event-banner {
+      position: absolute;
+      left: 50%;
+      top: 20px;
+      transform: translateX(-50%);
+      background: linear-gradient(180deg, #ebd785, #a56834);
+      color: #301b11;
+      z-index: 35;
+      pointer-events: none;
+      border-radius: 4px;
+      box-shadow: 0 0 0 2px #ffefc0, 0 0 0 5px #7f4f2d;
+      padding: 10px 14px;
+      font-family: "Press Start 2P", monospace;
+      font-size: 11px;
+      line-height: 1.55;
+      opacity: 1;
+      transition: opacity 220ms ease;
+      max-width: min(95vw, 900px);
+      text-align: center;
+    }
+
+    .toast {
+      position: absolute;
+      left: 50%;
+      bottom: 26px;
+      transform: translateX(-50%);
+      z-index: 35;
+      background: var(--panel-bright);
+      border-radius: 4px;
+      color: #e9fff4;
+      padding: 8px 12px;
+      box-shadow: var(--pixel-border);
+      font-size: 22px;
+    }
+
+    .hidden {
+      display: none !important;
+    }
+
+    @media (max-width: 920px) {
+      .creation-grid,
+      .hub-layout,
+      .shop-grid,
+      .battle-layout {
+        grid-template-columns: 1fr;
+      }
+
+      .battle-log {
+        height: 190px;
+      }
+
+      .menu-actions {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div id="game-root">
+    <div id="scene-container"></div>
+
+    <div id="ui-layer">
+      <section id="screen-main-menu" class="screen center-screen active">
+        <div class="panel">
+          <h1 class="hero-title">Echoes Of The Tavern Star</h1>
+          <p class="subtitle">A 2.5D pixel quest built with Three.js and old-school stat drama.</p>
+          <div class="menu-actions">
+            <button id="start-game-btn">Start Game</button>
+            <button id="load-game-btn">Load Game</button>
+            <button id="settings-btn">Settings</button>
+            <button id="exit-btn" class="warning">Exit</button>
+          </div>
+        </div>
+      </section>
+
+      <section id="screen-character" class="screen center-screen">
+        <div class="panel">
+          <h2 class="hero-title">Character Creation</h2>
+          <div class="creation-grid">
+            <div class="block">
+              <label for="player-name-input">Player Name</label>
+              <input id="player-name-input" type="text" maxlength="24" placeholder="Enter your legend...">
+
+              <p class="subtitle" style="margin-top: 14px;">Choose Class</p>
+              <div id="class-options" class="class-options"></div>
+              <p id="class-summary" class="stat-desc"></p>
+            </div>
+
+            <div class="block">
+              <div class="hud-statline">
+                <span>Points Remaining: <strong id="points-remaining">0</strong></span>
+              </div>
+              <div id="stat-point-grid" class="stat-grid"></div>
+            </div>
+          </div>
+          <div class="row-actions" style="grid-template-columns: 1fr 1fr; margin-top: 14px;">
+            <button id="confirm-character-btn">Create Adventurer</button>
+            <button id="back-from-character-btn" class="secondary">Back To Menu</button>
+          </div>
+        </div>
+      </section>
+
+      <section id="screen-hub" class="screen center-screen">
+        <div class="panel">
+          <h2 class="hero-title">The Tavern Hub</h2>
+          <div class="hud-statline">
+            <span>Leader: <strong id="hub-player-name">-</strong></span>
+            <span>Gold: <strong id="hub-gold">0</strong></span>
+            <span>Bosses Defeated: <strong id="hub-bosses">0</strong></span>
+            <span>Party: <strong id="hub-party-size">0/4</strong></span>
+          </div>
+
+          <div class="hub-layout" style="margin-top: 10px;">
+            <div class="block">
+              <p class="subtitle">Party Status</p>
+              <div id="hub-party-roster" class="party-roster"></div>
+            </div>
+            <div class="block">
+              <p class="subtitle">Tavern Rooms</p>
+              <div id="tavern-room-buttons" class="room-list"></div>
+            </div>
+          </div>
+
+          <div class="menu-actions" style="margin-top: 12px;">
+            <button id="explore-btn">Explore World</button>
+            <button id="open-shop-btn">Open Shop</button>
+            <button id="save-game-btn">Save Game</button>
+            <button id="back-to-menu-btn" class="secondary">Return To Main Menu</button>
+          </div>
+        </div>
+      </section>
+
+      <section id="screen-shop" class="screen center-screen">
+        <div class="panel">
+          <h2 class="hero-title">Guild Shop</h2>
+          <p class="subtitle">Buy weapons and spells for your party.</p>
+
+          <div class="block">
+            <label for="shop-member-select">Apply Purchases To</label>
+            <select id="shop-member-select"></select>
+          </div>
+
+          <div class="shop-grid" style="margin-top: 10px;">
+            <div class="block">
+              <p class="subtitle">Weapons</p>
+              <div id="weapon-list" class="shop-list"></div>
+            </div>
+            <div class="block">
+              <p class="subtitle">Spells</p>
+              <div id="spell-list" class="shop-list"></div>
+            </div>
+          </div>
+
+          <div class="row-actions" style="grid-template-columns: 1fr; margin-top: 14px;">
+            <button id="back-to-hub-from-shop-btn" class="secondary">Back To Tavern</button>
+          </div>
+        </div>
+      </section>
+
+      <section id="screen-battle" class="screen center-screen">
+        <div class="panel">
+          <h2 class="hero-title">Battle</h2>
+          <p id="enemy-name" class="enemy-banner">Enemy: -</p>
+          <p id="enemy-stats" class="stat-desc">-</p>
+          <div class="hp-bar"><div id="enemy-hp-fill" class="hp-fill" style="width: 100%;"></div></div>
+
+          <div class="battle-layout" style="margin-top: 10px;">
+            <div class="block">
+              <p class="subtitle">Combat Log</p>
+              <div id="battle-log" class="battle-log"></div>
+            </div>
+            <div class="block">
+              <p class="subtitle">Actions</p>
+              <div class="battle-actions">
+                <button class="battle-action-btn" data-action="attack">Attack</button>
+                <button class="battle-action-btn" data-action="magic">Magic</button>
+                <button class="battle-action-btn" data-action="heal">Heal</button>
+                <button class="battle-action-btn" data-action="guard">Guard</button>
+                <button class="battle-action-btn" data-action="run">Run</button>
+                <button id="leave-battle-btn" class="secondary">Exit</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="screen-settings" class="screen center-screen">
+        <div class="panel">
+          <h2 class="hero-title">Settings</h2>
+          <div class="block">
+            <label for="encounter-rate-slider">Encounter Rate Multiplier</label>
+            <input id="encounter-rate-slider" type="range" min="40" max="180" step="5" value="100">
+            <p class="stat-desc">Current: <strong id="encounter-rate-value">1.00x</strong></p>
+          </div>
+          <div class="row-actions" style="grid-template-columns: 1fr; margin-top: 12px;">
+            <button id="back-from-settings-btn" class="secondary">Back To Menu</button>
+          </div>
+        </div>
+      </section>
+
+      <section id="screen-load" class="screen center-screen">
+        <div class="panel">
+          <h2 class="hero-title">Load Game</h2>
+          <p id="load-info" class="subtitle">No save data found.</p>
+          <div class="menu-actions">
+            <button id="load-slot-btn">Load Save Slot</button>
+            <button id="back-from-load-btn" class="secondary">Back To Menu</button>
+          </div>
+        </div>
+      </section>
+
+      <section id="screen-ending" class="screen center-screen">
+        <div class="panel">
+          <h2 id="ending-title" class="hero-title">Ending</h2>
+          <p id="ending-summary" class="subtitle">-</p>
+          <div class="row-actions" style="grid-template-columns: 1fr;">
+            <button id="restart-btn">Return To Main Menu</button>
+          </div>
+        </div>
+      </section>
+
+      <section id="screen-exploration" class="screen screen-hud">
+        <div class="hud-panel">
+          <h3>Exploration</h3>
+          <p id="hud-location">Position: (0, 0)</p>
+          <p id="hud-encounter">Encounter Pulse: 0%</p>
+          <p id="hud-gold">Gold: 0</p>
+          <p id="hud-bosses">Bosses Defeated: 0</p>
+          <div class="row-actions" style="grid-template-columns: 1fr;">
+            <button id="return-hub-btn" class="secondary">Return To Tavern</button>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <div id="event-banner" class="event-banner hidden"></div>
+    <div id="toast" class="toast hidden"></div>
+  </div>
+
+  <script type="module" src="./main.js"></script>
+</body>
+</html>
