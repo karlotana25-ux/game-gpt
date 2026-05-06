@@ -3,18 +3,32 @@ import { CombatEngine } from "./src/combat-engine.js";
 import { FINAL_BOSS_COUNT, GAME_CONFIG, GAME_PHASE, SAVE_KEY, STAT_KEYS, STAT_LABELS } from "./src/config.js";
 import { SCREEN_BY_PHASE, dom } from "./src/dom.js";
 import { PartyManager } from "./src/party-manager.js";
+import { loadTiledMap } from "./src/tiled-map-loader.js";
 import { clamp, cloneStats, pickRandom, randomInt } from "./src/utils.js";
 
 const keysDown = new Set();
+const TILE_LAYER_ELEVATION_STEP = 0.012;
+const TILE_LAYER_EPSILON = 0.001;
+const DEFAULT_TILE_WORLD_SIZE = 1;
 
 let scene;
 let camera;
 let renderer;
 let clock;
 let floorMesh;
+let worldGroup;
 let playerMesh;
 let activeEnemyMesh;
 const billboardMeshes = [];
+const animatedLayerTiles = [];
+const tileTextureCache = new Map();
+let tileMapData = null;
+let tileMapCenter = { x: 0, y: 0 };
+let tileMapCollision = null;
+let tileWorldSize = GAME_CONFIG.world.tileMap?.tileWorldSize || DEFAULT_TILE_WORLD_SIZE;
+let worldLoadRequestId = 0;
+const textureLoader = new THREE.TextureLoader();
+const worldBounds = createDefaultWorldBounds();
 
 let toastTimer = null;
 let eventTimer = null;
@@ -256,10 +270,154 @@ function bindKeyboardInput() {
   });
 }
 
-function buildWorldGeometry() {
-  if (floorMesh) {
-    scene.remove(floorMesh);
+function createDefaultWorldBounds() {
+  const maxOffset = Math.max(1, GAME_CONFIG.world.mapHalfExtent - 1);
+  return {
+    minX: -maxOffset,
+    maxX: maxOffset,
+    minZ: -maxOffset,
+    maxZ: maxOffset
+  };
+}
+
+function applyWorldBounds(nextBounds) {
+  worldBounds.minX = nextBounds.minX;
+  worldBounds.maxX = nextBounds.maxX;
+  worldBounds.minZ = nextBounds.minZ;
+  worldBounds.maxZ = nextBounds.maxZ;
+}
+
+function getWorldBounds() {
+  return worldBounds;
+}
+
+function clampToWorldBounds(x, z) {
+  const bounds = getWorldBounds();
+  return {
+    x: clamp(x, bounds.minX, bounds.maxX),
+    z: clamp(z, bounds.minZ, bounds.maxZ)
+  };
+}
+
+function toTileKey(x, y) {
+  return `${x},${y}`;
+}
+
+function worldToTileCoordinates(x, z) {
+  if (!tileMapData) {
+    return null;
   }
+  const scaledX = x / tileWorldSize + tileMapCenter.x;
+  const scaledY = z / tileWorldSize + tileMapCenter.y;
+  return {
+    x: Math.floor(scaledX),
+    y: Math.floor(scaledY)
+  };
+}
+
+function isTileWalkable(tileX, tileY) {
+  if (!tileMapCollision) {
+    return true;
+  }
+  if (
+    tileX < tileMapCollision.minTileX ||
+    tileX > tileMapCollision.maxTileX ||
+    tileY < tileMapCollision.minTileY ||
+    tileY > tileMapCollision.maxTileY
+  ) {
+    return false;
+  }
+
+  const key = toTileKey(tileX, tileY);
+  if (tileMapCollision.passable.has(key)) {
+    return true;
+  }
+  return !tileMapCollision.blocked.has(key);
+}
+
+function isWalkableWorldPosition(x, z) {
+  const tileCoords = worldToTileCoordinates(x, z);
+  if (!tileCoords) {
+    return true;
+  }
+  return isTileWalkable(tileCoords.x, tileCoords.y);
+}
+
+function findNearestWalkablePosition(startX, startZ, maxRadius = 14) {
+  const originTile = worldToTileCoordinates(startX, startZ);
+  if (!originTile) {
+    return { x: startX, z: startZ };
+  }
+
+  for (let radius = 0; radius <= maxRadius; radius += 1) {
+    for (let dy = -radius; dy <= radius; dy += 1) {
+      for (let dx = -radius; dx <= radius; dx += 1) {
+        if (Math.abs(dx) !== radius && Math.abs(dy) !== radius) {
+          continue;
+        }
+        const tileX = originTile.x + dx;
+        const tileY = originTile.y + dy;
+        if (!isTileWalkable(tileX, tileY)) {
+          continue;
+        }
+
+        return {
+          x: (tileX + 0.5 - tileMapCenter.x) * tileWorldSize,
+          z: (tileY + 0.5 - tileMapCenter.y) * tileWorldSize
+        };
+      }
+    }
+  }
+
+  return { x: startX, z: startZ };
+}
+
+function syncCameraToPlayer() {
+  if (!playerMesh) {
+    return;
+  }
+  camera.position.x = playerMesh.position.x + 18;
+  camera.position.z = playerMesh.position.z + 18;
+  camera.lookAt(playerMesh.position.x, 0, playerMesh.position.z);
+}
+
+function clearWorldGroup() {
+  if (!worldGroup) {
+    return;
+  }
+
+  scene.remove(worldGroup);
+
+  worldGroup.traverse((node) => {
+    if (!node.isMesh) {
+      return;
+    }
+    if (node.geometry) {
+      node.geometry.dispose();
+    }
+    if (node.material) {
+      node.material.dispose();
+    }
+  });
+
+  worldGroup = null;
+  floorMesh = null;
+}
+
+function resetTileMapState() {
+  tileMapData = null;
+  tileMapCollision = null;
+  tileMapCenter = { x: 0, y: 0 };
+  tileWorldSize = GAME_CONFIG.world.tileMap?.tileWorldSize || DEFAULT_TILE_WORLD_SIZE;
+  animatedLayerTiles.length = 0;
+  applyWorldBounds(createDefaultWorldBounds());
+}
+
+function buildFallbackWorldGeometry() {
+  resetTileMapState();
+  clearWorldGroup();
+
+  worldGroup = new THREE.Group();
 
   const floorTexture = createFloorTexture();
   floorTexture.wrapS = THREE.RepeatWrapping;
@@ -271,19 +429,316 @@ function buildWorldGeometry() {
   floorMesh = new THREE.Mesh(new THREE.PlaneGeometry(floorSize, floorSize), floorMaterial);
   floorMesh.rotation.x = -Math.PI / 2;
   floorMesh.position.y = 0;
-  scene.add(floorMesh);
+  worldGroup.add(floorMesh);
 
-  const propGroup = new THREE.Group();
-  const treeCount = 34;
-  for (let i = 0; i < treeCount; i += 1) {
-    const treeTexture = createTreeTexture();
-    const tree = createBillboardMesh(treeTexture, 2, 3.4);
-    tree.position.x = randomInt(-21, 21);
-    tree.position.z = randomInt(-21, 21);
-    tree.position.y = 1.7;
-    propGroup.add(tree);
+  scene.add(worldGroup);
+}
+
+function getPatternList(configValue, fallbackList) {
+  if (Array.isArray(configValue) && configValue.length) {
+    return configValue
+      .map((entry) => String(entry || "").trim().toLowerCase())
+      .filter(Boolean);
   }
-  scene.add(propGroup);
+  return fallbackList;
+}
+
+function layerNameMatches(layerName, patterns) {
+  const normalizedName = String(layerName || "").toLowerCase();
+  return patterns.some((pattern) => normalizedName.includes(pattern));
+}
+
+function buildCollisionDataFromMap(mapData) {
+  const blockingPatterns = getPatternList(
+    GAME_CONFIG.world.tileMap?.blockingLayerNamePatterns,
+    ["water"]
+  );
+  const passablePatterns = getPatternList(
+    GAME_CONFIG.world.tileMap?.passableOverrideLayerNamePatterns,
+    ["bridge", "stairs"]
+  );
+
+  const blocked = new Set();
+  const passable = new Set();
+
+  for (const layer of mapData.layers) {
+    if (!layer.visible || !layer.tiles.length) {
+      continue;
+    }
+    const isBlockingLayer = layerNameMatches(layer.name, blockingPatterns);
+    const isPassableLayer = layerNameMatches(layer.name, passablePatterns);
+    if (!isBlockingLayer && !isPassableLayer) {
+      continue;
+    }
+
+    for (const tile of layer.tiles) {
+      const key = toTileKey(tile.x, tile.y);
+      if (isBlockingLayer) {
+        blocked.add(key);
+      }
+      if (isPassableLayer) {
+        passable.add(key);
+      }
+    }
+  }
+
+  return {
+    blocked,
+    passable,
+    minTileX: mapData.mapBounds.minTileX,
+    maxTileX: mapData.mapBounds.maxTileX,
+    minTileY: mapData.mapBounds.minTileY,
+    maxTileY: mapData.mapBounds.maxTileY
+  };
+}
+
+async function loadTextureForTileset(tileset) {
+  const cacheKey = tileset.imageUrl;
+  if (tileTextureCache.has(cacheKey)) {
+    return tileTextureCache.get(cacheKey);
+  }
+
+  const texture = await textureLoader.loadAsync(cacheKey);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.magFilter = THREE.NearestFilter;
+  texture.minFilter = THREE.NearestFilter;
+  texture.generateMipmaps = false;
+  texture.needsUpdate = true;
+  tileTextureCache.set(cacheKey, texture);
+  return texture;
+}
+
+function applyTileFlip(uvCorners, flipH, flipV, flipD) {
+  if (flipD) {
+    const temp = uvCorners.tr;
+    uvCorners.tr = uvCorners.bl;
+    uvCorners.bl = temp;
+  }
+  if (flipH) {
+    const topSwap = uvCorners.tl;
+    uvCorners.tl = uvCorners.tr;
+    uvCorners.tr = topSwap;
+
+    const bottomSwap = uvCorners.bl;
+    uvCorners.bl = uvCorners.br;
+    uvCorners.br = bottomSwap;
+  }
+  if (flipV) {
+    const leftSwap = uvCorners.tl;
+    uvCorners.tl = uvCorners.bl;
+    uvCorners.bl = leftSwap;
+
+    const rightSwap = uvCorners.tr;
+    uvCorners.tr = uvCorners.br;
+    uvCorners.br = rightSwap;
+  }
+}
+
+function computeTileUvCorners(tileset, gid, flipH, flipV, flipD) {
+  const localTileId = gid - tileset.firstGid;
+  const col = localTileId % tileset.columns;
+  const row = Math.floor(localTileId / tileset.columns);
+
+  const u0 = (col * tileset.tileWidth) / tileset.imageWidth;
+  const v0 = (row * tileset.tileHeight) / tileset.imageHeight;
+  const u1 = ((col + 1) * tileset.tileWidth) / tileset.imageWidth;
+  const v1 = ((row + 1) * tileset.tileHeight) / tileset.imageHeight;
+
+  const uvCorners = {
+    tl: [u0, v0],
+    tr: [u1, v0],
+    br: [u1, v1],
+    bl: [u0, v1]
+  };
+
+  applyTileFlip(uvCorners, flipH, flipV, flipD);
+  return uvCorners;
+}
+
+function writeUvForTile(uvArray, tileIndex, uvCorners) {
+  const uvOffset = tileIndex * 8;
+  uvArray[uvOffset + 0] = uvCorners.tl[0];
+  uvArray[uvOffset + 1] = uvCorners.tl[1];
+  uvArray[uvOffset + 2] = uvCorners.tr[0];
+  uvArray[uvOffset + 3] = uvCorners.tr[1];
+  uvArray[uvOffset + 4] = uvCorners.br[0];
+  uvArray[uvOffset + 5] = uvCorners.br[1];
+  uvArray[uvOffset + 6] = uvCorners.bl[0];
+  uvArray[uvOffset + 7] = uvCorners.bl[1];
+}
+
+function buildLayerMesh(tileset, tiles, layerHeightOffset, material) {
+  const vertexCount = tiles.length * 4;
+  const positions = new Float32Array(vertexCount * 3);
+  const uvs = new Float32Array(vertexCount * 2);
+  const IndexArrayType = vertexCount > 65535 ? Uint32Array : Uint16Array;
+  const indexArray = new IndexArrayType(tiles.length * 6);
+
+  for (let i = 0; i < tiles.length; i += 1) {
+    const tile = tiles[i];
+    const x0 = (tile.x - tileMapCenter.x) * tileWorldSize;
+    const z0 = (tile.y - tileMapCenter.y) * tileWorldSize;
+    const x1 = x0 + tileWorldSize;
+    const z1 = z0 + tileWorldSize;
+
+    const vertexOffset = i * 12;
+    positions[vertexOffset + 0] = x0;
+    positions[vertexOffset + 1] = layerHeightOffset;
+    positions[vertexOffset + 2] = z0;
+    positions[vertexOffset + 3] = x1;
+    positions[vertexOffset + 4] = layerHeightOffset;
+    positions[vertexOffset + 5] = z0;
+    positions[vertexOffset + 6] = x1;
+    positions[vertexOffset + 7] = layerHeightOffset;
+    positions[vertexOffset + 8] = z1;
+    positions[vertexOffset + 9] = x0;
+    positions[vertexOffset + 10] = layerHeightOffset;
+    positions[vertexOffset + 11] = z1;
+
+    const uvCorners = computeTileUvCorners(tileset, tile.gid, tile.flipH, tile.flipV, tile.flipD);
+    writeUvForTile(uvs, i, uvCorners);
+
+    const indexOffset = i * 6;
+    const v = i * 4;
+    indexArray[indexOffset + 0] = v + 0;
+    indexArray[indexOffset + 1] = v + 2;
+    indexArray[indexOffset + 2] = v + 1;
+    indexArray[indexOffset + 3] = v + 0;
+    indexArray[indexOffset + 4] = v + 3;
+    indexArray[indexOffset + 5] = v + 2;
+  }
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+  geometry.setAttribute("uv", new THREE.BufferAttribute(uvs, 2));
+  geometry.setIndex(new THREE.BufferAttribute(indexArray, 1));
+  geometry.computeVertexNormals();
+
+  const mesh = new THREE.Mesh(geometry, material);
+  mesh.frustumCulled = false;
+
+  for (let i = 0; i < tiles.length; i += 1) {
+    const tile = tiles[i];
+    const animationFrames = tileMapData.animationsByGlobalGid.get(tile.gid);
+    if (!animationFrames || !animationFrames.length) {
+      continue;
+    }
+    animatedLayerTiles.push({
+      uvArray: uvs,
+      uvAttribute: geometry.getAttribute("uv"),
+      tileIndex: i,
+      tileset,
+      frames: animationFrames,
+      flipH: tile.flipH,
+      flipV: tile.flipV,
+      flipD: tile.flipD,
+      frameIndex: 0,
+      elapsedMs: 0
+    });
+  }
+
+  return mesh;
+}
+
+async function applyTileMapWorld(mapData) {
+  tileMapData = mapData;
+  tileWorldSize = Math.max(0.2, Number(GAME_CONFIG.world.tileMap?.tileWorldSize) || DEFAULT_TILE_WORLD_SIZE);
+  tileMapCenter = {
+    x: (mapData.mapBounds.minTileX + mapData.mapBounds.maxTileX + 1) / 2,
+    y: (mapData.mapBounds.minTileY + mapData.mapBounds.maxTileY + 1) / 2
+  };
+
+  const minX = (mapData.mapBounds.minTileX - tileMapCenter.x) * tileWorldSize + 0.5 * tileWorldSize;
+  const maxX = (mapData.mapBounds.maxTileX + 1 - tileMapCenter.x) * tileWorldSize - 0.5 * tileWorldSize;
+  const minZ = (mapData.mapBounds.minTileY - tileMapCenter.y) * tileWorldSize + 0.5 * tileWorldSize;
+  const maxZ = (mapData.mapBounds.maxTileY + 1 - tileMapCenter.y) * tileWorldSize - 0.5 * tileWorldSize;
+
+  applyWorldBounds({ minX, maxX, minZ, maxZ });
+  tileMapCollision = buildCollisionDataFromMap(mapData);
+  animatedLayerTiles.length = 0;
+
+  clearWorldGroup();
+  worldGroup = new THREE.Group();
+
+  for (let layerIndex = 0; layerIndex < mapData.layers.length; layerIndex += 1) {
+    const layer = mapData.layers[layerIndex];
+    if (!layer.visible || !layer.tiles.length) {
+      continue;
+    }
+
+    const tilesByTileset = new Map();
+    for (const tile of layer.tiles) {
+      const tileset = mapData.resolveTileset(tile.gid);
+      if (!tileset) {
+        continue;
+      }
+      if (!tilesByTileset.has(tileset.firstGid)) {
+        tilesByTileset.set(tileset.firstGid, { tileset, tiles: [] });
+      }
+      tilesByTileset.get(tileset.firstGid).tiles.push(tile);
+    }
+
+    for (const { tileset, tiles } of tilesByTileset.values()) {
+      const texture = await loadTextureForTileset(tileset);
+      const layerMaterial = new THREE.MeshLambertMaterial({
+        map: texture,
+        transparent: true,
+        alphaTest: 0.22,
+        depthWrite: true,
+        opacity: layer.opacity
+      });
+
+      const layerHeightOffset = TILE_LAYER_EPSILON + layerIndex * TILE_LAYER_ELEVATION_STEP;
+      const layerMesh = buildLayerMesh(tileset, tiles, layerHeightOffset, layerMaterial);
+      worldGroup.add(layerMesh);
+    }
+  }
+
+  scene.add(worldGroup);
+
+  if (playerMesh) {
+    const clamped = clampToWorldBounds(playerMesh.position.x, playerMesh.position.z);
+    let nextX = clamped.x;
+    let nextZ = clamped.z;
+    if (!isWalkableWorldPosition(nextX, nextZ)) {
+      const fallbackPos = findNearestWalkablePosition(nextX, nextZ);
+      nextX = fallbackPos.x;
+      nextZ = fallbackPos.z;
+    }
+    playerMesh.position.x = nextX;
+    playerMesh.position.z = nextZ;
+    syncCameraToPlayer();
+    updateExplorationHud();
+  }
+}
+
+function buildWorldGeometry() {
+  buildFallbackWorldGeometry();
+
+  if (!GAME_CONFIG.world.tileMap?.enabled || !GAME_CONFIG.world.tileMap?.path) {
+    return;
+  }
+
+  const loadRequestId = ++worldLoadRequestId;
+
+  loadTiledMap(GAME_CONFIG.world.tileMap.path)
+    .then(async (mapData) => {
+      if (loadRequestId !== worldLoadRequestId) {
+        return;
+      }
+      await applyTileMapWorld(mapData);
+    })
+    .catch((error) => {
+      if (loadRequestId !== worldLoadRequestId) {
+        return;
+      }
+      console.error(error);
+      showToast("Undead tileset map failed to load. Using fallback terrain.");
+      buildFallbackWorldGeometry();
+      if (playerMesh) {
+        setPlayerPosition(playerMesh.position.x, playerMesh.position.z);
+      }
+    });
 }
 
 function createOrReplacePlayerMesh(className) {
@@ -302,11 +757,19 @@ function createEnemyMesh(isBoss) {
   clearEnemyMesh();
   const enemyTexture = createEnemyTexture(isBoss);
   activeEnemyMesh = createBillboardMesh(enemyTexture, 2.2, 2.8);
-  activeEnemyMesh.position.set(
+  const candidate = clampToWorldBounds(
     playerMesh.position.x + randomInt(-3, 3),
-    1.4,
     playerMesh.position.z + randomInt(-3, 3)
   );
+  let enemyX = candidate.x;
+  let enemyZ = candidate.z;
+  if (!isWalkableWorldPosition(enemyX, enemyZ)) {
+    const fallback = findNearestWalkablePosition(enemyX, enemyZ, 8);
+    enemyX = fallback.x;
+    enemyZ = fallback.z;
+  }
+
+  activeEnemyMesh.position.set(enemyX, 1.4, enemyZ);
   scene.add(activeEnemyMesh);
 }
 
@@ -399,24 +862,6 @@ function createEnemyTexture(isBoss) {
     ctx.fillRect(9, 10, 2, 2);
     ctx.fillRect(13, 10, 2, 2);
     ctx.fillRect(10, 14, 4, 2);
-  });
-}
-
-function createTreeTexture() {
-  return createPixelTexture(24, 32, (ctx) => {
-    ctx.clearRect(0, 0, 24, 32);
-
-    ctx.fillStyle = "#314f2f";
-    ctx.fillRect(7, 4, 10, 12);
-    ctx.fillRect(4, 10, 16, 8);
-    ctx.fillRect(6, 16, 12, 8);
-
-    ctx.fillStyle = "#4f7a49";
-    ctx.fillRect(8, 6, 8, 8);
-    ctx.fillRect(6, 12, 12, 7);
-
-    ctx.fillStyle = "#5f3a26";
-    ctx.fillRect(10, 22, 4, 8);
   });
 }
 
@@ -604,10 +1049,20 @@ function setPlayerPosition(x, z) {
   if (!playerMesh) {
     return;
   }
-  playerMesh.position.x = clamp(x, -GAME_CONFIG.world.mapHalfExtent + 1, GAME_CONFIG.world.mapHalfExtent - 1);
-  playerMesh.position.z = clamp(z, -GAME_CONFIG.world.mapHalfExtent + 1, GAME_CONFIG.world.mapHalfExtent - 1);
-  camera.position.set(playerMesh.position.x + 18, 18, playerMesh.position.z + 18);
-  camera.lookAt(playerMesh.position.x, 0, playerMesh.position.z);
+
+  const clamped = clampToWorldBounds(x, z);
+  let targetX = clamped.x;
+  let targetZ = clamped.z;
+
+  if (!isWalkableWorldPosition(targetX, targetZ)) {
+    const nearest = findNearestWalkablePosition(targetX, targetZ);
+    targetX = nearest.x;
+    targetZ = nearest.z;
+  }
+
+  playerMesh.position.x = targetX;
+  playerMesh.position.z = targetZ;
+  syncCameraToPlayer();
 }
 
 function updateHubPanel() {
@@ -1316,9 +1771,15 @@ function updateExplorationMovement(delta) {
   const oldX = playerMesh.position.x;
   const oldZ = playerMesh.position.z;
 
-  playerMesh.position.addScaledVector(moveVector, GAME_CONFIG.world.moveSpeed * delta);
-  playerMesh.position.x = clamp(playerMesh.position.x, -GAME_CONFIG.world.mapHalfExtent + 1, GAME_CONFIG.world.mapHalfExtent - 1);
-  playerMesh.position.z = clamp(playerMesh.position.z, -GAME_CONFIG.world.mapHalfExtent + 1, GAME_CONFIG.world.mapHalfExtent - 1);
+  const movementStep = GAME_CONFIG.world.moveSpeed * delta;
+  const proposedX = oldX + moveVector.x * movementStep;
+  const proposedZ = oldZ + moveVector.z * movementStep;
+  const clamped = clampToWorldBounds(proposedX, proposedZ);
+
+  if (isWalkableWorldPosition(clamped.x, clamped.z)) {
+    playerMesh.position.x = clamped.x;
+    playerMesh.position.z = clamped.z;
+  }
 
   const movedDistance = Math.hypot(playerMesh.position.x - oldX, playerMesh.position.z - oldZ);
   if (movedDistance > 0) {
@@ -1327,9 +1788,42 @@ function updateExplorationMovement(delta) {
     triggerEncounterIfNeeded();
   }
 
-  camera.position.x = playerMesh.position.x + 18;
-  camera.position.z = playerMesh.position.z + 18;
-  camera.lookAt(playerMesh.position.x, 0, playerMesh.position.z);
+  syncCameraToPlayer();
+}
+
+function updateAnimatedTileLayers(delta) {
+  if (!animatedLayerTiles.length) {
+    return;
+  }
+
+  const deltaMs = delta * 1000;
+  for (const animatedTile of animatedLayerTiles) {
+    animatedTile.elapsedMs += deltaMs;
+
+    let activeFrame = animatedTile.frames[animatedTile.frameIndex];
+    let frameChanged = false;
+
+    while (animatedTile.elapsedMs >= activeFrame.durationMs) {
+      animatedTile.elapsedMs -= activeFrame.durationMs;
+      animatedTile.frameIndex = (animatedTile.frameIndex + 1) % animatedTile.frames.length;
+      activeFrame = animatedTile.frames[animatedTile.frameIndex];
+      frameChanged = true;
+    }
+
+    if (!frameChanged) {
+      continue;
+    }
+
+    const uvCorners = computeTileUvCorners(
+      animatedTile.tileset,
+      activeFrame.gid,
+      animatedTile.flipH,
+      animatedTile.flipV,
+      animatedTile.flipD
+    );
+    writeUvForTile(animatedTile.uvArray, animatedTile.tileIndex, uvCorners);
+    animatedTile.uvAttribute.needsUpdate = true;
+  }
 }
 
 function showToast(message) {
@@ -1364,6 +1858,7 @@ function animate() {
 
   const delta = clock.getDelta();
   updateExplorationMovement(delta);
+  updateAnimatedTileLayers(delta);
 
   for (const billboard of billboardMeshes) {
     billboard.lookAt(camera.position.x, billboard.position.y, camera.position.z);

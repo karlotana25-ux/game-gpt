@@ -39,7 +39,14 @@ export const GAME_CONFIG = Object.freeze({
   world: {
     mapHalfExtent: 24,
     moveSpeed: 7,
-    encounterDistance: 6
+    encounterDistance: 6,
+    tileMap: {
+      enabled: true,
+      path: "/assets/Free-Undead-Tileset-Top-Down-Pixel-Art/Tiled_files/Undead_land.tmx",
+      tileWorldSize: 1,
+      blockingLayerNamePatterns: ["water"],
+      passableOverrideLayerNamePatterns: ["bridge", "stairs"]
+    }
   },
   encounters: {
     baseChance: 0.18,

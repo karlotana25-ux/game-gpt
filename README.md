@@ -79,6 +79,30 @@ The prototype is now split into focused ES modules for clearer separation of con
 *   `src/utils.js` - Shared utility helpers (`clamp`, `cloneStats`, `randomInt`, `pickRandom`).
 *   `src/party-manager.js` - `PartyManager` class for party state, stat recomputation, save-safe restoration.
 *   `src/combat-engine.js` - `CombatEngine` class with stat-based turn formulas (dodge/crit/magic/heal).
+*   `src/tiled-map-loader.js` - TMX/TSX parser and layer/tileset/animation loader for Tiled maps.
+
+---
+
+## Undead Tileset Integration
+
+The project now supports direct rendering of the Tiled map in:
+
+`assets/Free-Undead-Tileset-Top-Down-Pixel-Art/Tiled_files/Undead_land.tmx`
+
+Configuration is in `src/config.js` under `GAME_CONFIG.world.tileMap`:
+
+* `enabled`: Turn Tiled map loading on/off.
+* `path`: TMX file path.
+* `tileWorldSize`: World scale per tile (default `1`).
+* `blockingLayerNamePatterns`: Layer-name patterns treated as blocked terrain.
+* `passableOverrideLayerNamePatterns`: Layer-name patterns that override blocking (example: bridges/stairs).
+
+### Notes
+
+* The engine parses chunked CSV infinite maps and TSX references.
+* Tiled flip flags are supported, including horizontal/vertical/diagonal flips.
+* Animated tiles from Tiled metadata are updated at runtime.
+* If map loading fails, the game falls back to the original procedural floor.
 
 ---
 
