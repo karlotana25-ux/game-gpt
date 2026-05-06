@@ -69,6 +69,19 @@ This project is engineered for high performance and a polished "2.5D" aesthetic:
 
 ---
 
+## Module Structure
+
+The prototype is now split into focused ES modules for clearer separation of concerns:
+
+*   `main.js` - Game orchestration, UI events, phase switching, exploration loop.
+*   `src/config.js` - Centralized data-driven constants (classes, tavern, shop, enemy configs).
+*   `src/dom.js` - DOM element registry and phase-to-screen mapping.
+*   `src/utils.js` - Shared utility helpers (`clamp`, `cloneStats`, `randomInt`, `pickRandom`).
+*   `src/party-manager.js` - `PartyManager` class for party state, stat recomputation, save-safe restoration.
+*   `src/combat-engine.js` - `CombatEngine` class with stat-based turn formulas (dodge/crit/magic/heal).
+
+---
+
 ## 🏗 Development Guidelines (AI & Contributor Rules)
 
 To maintain the integrity of the Valley’s code, all development must follow these strict protocols:
