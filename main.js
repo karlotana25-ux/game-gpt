@@ -16,6 +16,10 @@ let playerMesh;
 let activeEnemyMesh;
 const billboardMeshes = [];
 
+let walkAnimationTimer = 0;
+let currentWalkFrame = 0;
+let isPlayerMoving = false;
+
 let toastTimer = null;
 let eventTimer = null;
 
@@ -293,6 +297,8 @@ function createOrReplacePlayerMesh(className) {
   }
   const texture = createCharacterTexture(className);
   playerMesh = createBillboardMesh(texture, 1.8, 2.4);
+  playerMesh.material.map.repeat.set(1 / 3, 1);
+  playerMesh.material.map.offset.set(0, 0);
   playerMesh.position.set(0, 1.2, 0);
   scene.add(playerMesh);
   updateExplorationHud();
@@ -357,22 +363,28 @@ function createCharacterTexture(className) {
   const classConfig = GAME_CONFIG.classes[className] || GAME_CONFIG.classes.Warrior;
   const [light, mid, dark] = classConfig.color;
 
-  return createPixelTexture(24, 24, (ctx) => {
-    ctx.clearRect(0, 0, 24, 24);
+  return createPixelTexture(72, 24, (ctx) => {
+    ctx.clearRect(0, 0, 72, 24);
 
-    ctx.fillStyle = dark;
-    ctx.fillRect(8, 4, 8, 4);
-    ctx.fillRect(6, 8, 12, 10);
+    const drawFrame = (offsetX, legLeftX, legRightX) => {
+      ctx.fillStyle = dark;
+      ctx.fillRect(offsetX + 8, 4, 8, 4);
+      ctx.fillRect(offsetX + 6, 8, 12, 10);
 
-    ctx.fillStyle = mid;
-    ctx.fillRect(7, 9, 10, 8);
-    ctx.fillRect(9, 18, 3, 4);
-    ctx.fillRect(13, 18, 3, 4);
+      ctx.fillStyle = mid;
+      ctx.fillRect(offsetX + 7, 9, 10, 8);
+      ctx.fillRect(offsetX + legLeftX, 18, 3, 4);
+      ctx.fillRect(offsetX + legRightX, 18, 3, 4);
 
-    ctx.fillStyle = light;
-    ctx.fillRect(9, 5, 6, 3);
-    ctx.fillRect(10, 11, 2, 2);
-    ctx.fillRect(13, 11, 2, 2);
+      ctx.fillStyle = light;
+      ctx.fillRect(offsetX + 9, 5, 6, 3);
+      ctx.fillRect(offsetX + 10, 11, 2, 2);
+      ctx.fillRect(offsetX + 13, 11, 2, 2);
+    };
+
+    drawFrame(0, 9, 13); // Frame 0: idle
+    drawFrame(24, 8, 13); // Frame 1: walk-left (left leg forward)
+    drawFrame(48, 9, 14); // Frame 2: walk-right (right leg forward)
   });
 }
 
@@ -429,6 +441,8 @@ function createPixelTexture(width, height, painter) {
   const texture = new THREE.CanvasTexture(canvas);
   texture.magFilter = THREE.NearestFilter;
   texture.minFilter = THREE.NearestFilter;
+  texture.wrapS = THREE.ClampToEdgeWrapping;
+  texture.wrapT = THREE.ClampToEdgeWrapping;
   texture.generateMipmaps = false;
   texture.needsUpdate = true;
   return texture;
@@ -1308,7 +1322,8 @@ function updateExplorationMovement(delta) {
 
   const horizontal = Number(keysDown.has("KeyD") || keysDown.has("ArrowRight")) - Number(keysDown.has("KeyA") || keysDown.has("ArrowLeft"));
   const vertical = Number(keysDown.has("KeyS") || keysDown.has("ArrowDown")) - Number(keysDown.has("KeyW") || keysDown.has("ArrowUp"));
-  if (horizontal === 0 && vertical === 0) {
+  isPlayerMoving = horizontal !== 0 || vertical !== 0;
+  if (!isPlayerMoving) {
     return;
   }
 
@@ -1364,6 +1379,23 @@ function animate() {
 
   const delta = clock.getDelta();
   updateExplorationMovement(delta);
+
+  if (playerMesh && playerMesh.material.map) {
+    walkAnimationTimer += delta;
+    if (isPlayerMoving) {
+      if (walkAnimationTimer >= 0.15) {
+        walkAnimationTimer = 0;
+        currentWalkFrame = (currentWalkFrame % 2) + 1;
+        playerMesh.material.map.offset.x = currentWalkFrame / 3;
+      }
+    } else {
+      if (currentWalkFrame !== 0) {
+        currentWalkFrame = 0;
+        playerMesh.material.map.offset.x = 0;
+      }
+      walkAnimationTimer = 0;
+    }
+  }
 
   for (const billboard of billboardMeshes) {
     billboard.lookAt(camera.position.x, billboard.position.y, camera.position.z);
