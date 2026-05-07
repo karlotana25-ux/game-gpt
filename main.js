@@ -19,6 +19,7 @@ const billboardMeshes = [];
 let walkAnimationTimer = 0;
 let currentWalkFrame = 0;
 let isPlayerMoving = false;
+let playerDirection = "down"; // Default facing direction (down)
 
 let toastTimer = null;
 let eventTimer = null;
@@ -296,10 +297,13 @@ function createOrReplacePlayerMesh(className) {
     scene.remove(playerMesh);
   }
   const texture = createCharacterTexture(className);
-  playerMesh = createBillboardMesh(texture, 1.8, 2.4);
-  playerMesh.material.map.repeat.set(1 / 3, 1);
-  playerMesh.material.map.offset.set(0, 0);
-  playerMesh.position.set(0, 1.2, 0);
+  playerMesh = createBillboardMesh(texture, 2.0, 2.0); // Square mesh for 16-bit
+
+  // Set view to 1/4 of the width and 1/4 of the height
+  playerMesh.material.map.repeat.set(1 / 4, 1 / 4);
+  playerMesh.material.map.offset.set(0, 0.75); // Start at row 0 (Down)
+
+  playerMesh.position.set(0, 1, 0);
   scene.add(playerMesh);
   updateExplorationHud();
 }
@@ -361,31 +365,115 @@ function createFloorTexture() {
 
 function createCharacterTexture(className) {
   const classConfig = GAME_CONFIG.classes[className] || GAME_CONFIG.classes.Warrior;
-  const [light, mid, dark] = classConfig.color;
+  const [light, mid, dark, shadow] = classConfig.color;
 
-  return createPixelTexture(72, 24, (ctx) => {
-    ctx.clearRect(0, 0, 72, 24);
+  try {
+    // 4x4 Grid: Rows [Down, Up, Left, Right] | Columns [Idle, Step1, Idle, Step2]
+    return createPixelTexture(128, 128, (ctx) => {
+      ctx.clearRect(0, 0, 128, 128);
 
-    const drawFrame = (offsetX, legLeftX, legRightX) => {
-      ctx.fillStyle = dark;
-      ctx.fillRect(offsetX + 8, 4, 8, 4);
-      ctx.fillRect(offsetX + 6, 8, 12, 10);
+      const drawCharacterFrame = (dirRow, frameCol, direction) => {
+        const ox = frameCol * 32;
+        const oy = dirRow * 32;
+        const isStepping = frameCol === 1 || frameCol === 3;
+        const stepSide = frameCol === 1 ? 'L' : 'R';
+        const bob = isStepping ? 1 : 0; // Slight dip when walking
 
-      ctx.fillStyle = mid;
-      ctx.fillRect(offsetX + 7, 9, 10, 8);
-      ctx.fillRect(offsetX + legLeftX, 18, 3, 4);
-      ctx.fillRect(offsetX + legRightX, 18, 3, 4);
+        // 1. Shadow Circle on Ground
+        ctx.fillStyle = "rgba(0,0,0,0.2)";
+        ctx.beginPath();
+        ctx.ellipse(ox + 16, oy + 28, 8, 4, 0, 0, Math.PI * 2);
+        ctx.fill();
 
-      ctx.fillStyle = light;
-      ctx.fillRect(offsetX + 9, 5, 6, 3);
-      ctx.fillRect(offsetX + 10, 11, 2, 2);
-      ctx.fillRect(offsetX + 13, 11, 2, 2);
-    };
+        // 2. Legs/Feet
+        ctx.fillStyle = dark;
+        if (direction === 'down' || direction === 'up') {
+          ctx.fillRect(ox + 10, oy + 22 + bob, 4, 6 - bob); // Left Leg
+          ctx.fillRect(ox + 18, oy + 22 + bob, 4, 6 - bob); // Right Leg
+          if (isStepping) {
+            ctx.fillStyle = shadow;
+            const activeLegX = stepSide === 'L' ? 10 : 18;
+            ctx.fillRect(ox + activeLegX, oy + 26, 4, 3); // Walking lift
+          }
+        } else { // Side views
+          ctx.fillRect(ox + 13, oy + 22 + bob, 6, 6 - bob);
+        }
 
-    drawFrame(0, 9, 13); // Frame 0: idle
-    drawFrame(24, 8, 13); // Frame 1: walk-left (left leg forward)
-    drawFrame(48, 9, 14); // Frame 2: walk-right (right leg forward)
-  });
+        // 3. Torso/Body
+        ctx.fillStyle = mid;
+        ctx.fillRect(ox + 9, oy + 12 + bob, 14, 11);
+        // Shading for depth
+        ctx.fillStyle = shadow;
+        ctx.fillRect(ox + 9, oy + 21 + bob, 14, 2);
+
+        // 4. Arms
+        ctx.fillStyle = light;
+        if (direction === 'down') {
+          const armOffset = isStepping ? (stepSide === 'L' ? -2 : 2) : 0;
+          ctx.fillRect(ox + 6, oy + 14 + bob + armOffset, 3, 7); // Left Arm
+          ctx.fillRect(ox + 23, oy + 14 + bob - armOffset, 3, 7); // Right Arm
+        } else if (direction === 'left') {
+          ctx.fillRect(ox + 14, oy + 14 + bob, 3, 8);
+        } else if (direction === 'right') {
+          ctx.fillRect(ox + 15, oy + 14 + bob, 3, 8);
+        }
+
+        // 5. Head
+        ctx.fillStyle = mid;
+        ctx.fillRect(ox + 10, oy + 3 + bob, 12, 10);
+        // Hair
+        ctx.fillStyle = dark;
+        ctx.fillRect(ox + 9, oy + 2 + bob, 14, 5); // Hair cap
+
+        // Face Details
+        if (direction !== 'up') {
+          ctx.fillStyle = shadow;
+          if (direction === 'down') {
+            ctx.fillRect(ox + 12, oy + 7 + bob, 2, 2); // Eye L
+            ctx.fillRect(ox + 18, oy + 7 + bob, 2, 2); // Eye R
+          } else if (direction === 'left') {
+            ctx.fillRect(ox + 11, oy + 7 + bob, 2, 2); // Side Eye
+          } else if (direction === 'right') {
+            ctx.fillRect(ox + 19, oy + 7 + bob, 2, 2);
+          }
+        }
+      };
+
+      // Draw the full grid
+      const dirs = ['down', 'up', 'left', 'right'];
+      dirs.forEach((dir, row) => {
+        for (let col = 0; col < 4; col++) {
+          drawCharacterFrame(row, col, dir);
+        }
+      });
+    });
+  } catch (error) {
+    console.error("Failed to generate new character texture, falling back to original:", error);
+    // Fallback to original texture generation
+    return createPixelTexture(72, 24, (ctx) => {
+      ctx.clearRect(0, 0, 72, 24);
+
+      const drawFrame = (offsetX, legLeftX, legRightX) => {
+        ctx.fillStyle = dark;
+        ctx.fillRect(offsetX + 8, 4, 8, 4);
+        ctx.fillRect(offsetX + 6, 8, 12, 10);
+
+        ctx.fillStyle = mid;
+        ctx.fillRect(offsetX + 7, 9, 10, 8);
+        ctx.fillRect(offsetX + legLeftX, 18, 3, 4);
+        ctx.fillRect(offsetX + legRightX, 18, 3, 4);
+
+        ctx.fillStyle = light;
+        ctx.fillRect(offsetX + 9, 5, 6, 3);
+        ctx.fillRect(offsetX + 10, 11, 2, 2);
+        ctx.fillRect(offsetX + 13, 11, 2, 2);
+      };
+
+      drawFrame(0, 9, 13); // Frame 0: idle
+      drawFrame(24, 8, 13); // Frame 1: walk-left (left leg forward)
+      drawFrame(48, 9, 14); // Frame 2: walk-right (right leg forward)
+    });
+  }
 }
 
 function createEnemyTexture(isBoss) {
@@ -1327,6 +1415,13 @@ function updateExplorationMovement(delta) {
     return;
   }
 
+  // New: Update direction based on dominant axis
+  if (Math.abs(vertical) > Math.abs(horizontal)) {
+    playerDirection = vertical > 0 ? "down" : "up";
+  } else if (horizontal !== 0) {
+    playerDirection = horizontal > 0 ? "right" : "left";
+  }
+
   const moveVector = new THREE.Vector3(horizontal, 0, vertical).normalize();
   const oldX = playerMesh.position.x;
   const oldZ = playerMesh.position.z;
@@ -1382,13 +1477,26 @@ function animate() {
 
   if (playerMesh && playerMesh.material.map) {
     walkAnimationTimer += delta;
+    const frameTime = 0.15; // Speed of walk cycle
+
     if (isPlayerMoving) {
-      if (walkAnimationTimer >= 0.15) {
+      if (walkAnimationTimer >= frameTime) {
         walkAnimationTimer = 0;
-        currentWalkFrame = (currentWalkFrame % 2) + 1;
-        playerMesh.material.map.offset.x = currentWalkFrame / 3;
+        currentWalkFrame = (currentWalkFrame + 1) % 4;
+
+        // Update Animation Frame (Horizontal)
+        playerMesh.material.map.offset.x = currentWalkFrame / 4;
+
+        // Update Direction Row (Vertical)
+        let rowOffset = 0.75; // Default Down
+        if (playerDirection === 'up') rowOffset = 0.5;
+        if (playerDirection === 'left') rowOffset = 0.25;
+        if (playerDirection === 'right') rowOffset = 0.0;
+
+        playerMesh.material.map.offset.y = rowOffset;
       }
     } else {
+      // Reset to Idle frame (Frame 0) when not moving
       if (currentWalkFrame !== 0) {
         currentWalkFrame = 0;
         playerMesh.material.map.offset.x = 0;
