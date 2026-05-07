@@ -58,7 +58,7 @@ function setupThreeScene() {
   scene.fog = new THREE.Fog("#0a1820", 22, 56);
 
   camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 200);
-  camera.position.set(18, 18, 18);
+  camera.position.set(0, GAME_CONFIG.camera.verticalDistance, GAME_CONFIG.camera.followDistance);
   camera.lookAt(0, 0, 0);
 
   renderer = new THREE.WebGLRenderer({ antialias: false, alpha: false });
@@ -708,7 +708,7 @@ function setPlayerPosition(x, z) {
   }
   playerMesh.position.x = clamp(x, -GAME_CONFIG.world.mapHalfExtent + 1, GAME_CONFIG.world.mapHalfExtent - 1);
   playerMesh.position.z = clamp(z, -GAME_CONFIG.world.mapHalfExtent + 1, GAME_CONFIG.world.mapHalfExtent - 1);
-  camera.position.set(playerMesh.position.x + 18, 18, playerMesh.position.z + 18);
+  camera.position.set(playerMesh.position.x, GAME_CONFIG.camera.verticalDistance, playerMesh.position.z + GAME_CONFIG.camera.followDistance);
   camera.lookAt(playerMesh.position.x, 0, playerMesh.position.z);
 }
 
@@ -1437,9 +1437,9 @@ function updateExplorationMovement(delta) {
     triggerEncounterIfNeeded();
   }
 
-  camera.position.x = playerMesh.position.x + 18;
-  camera.position.z = playerMesh.position.z + 18;
-  camera.lookAt(playerMesh.position.x, 0, playerMesh.position.z);
+      camera.position.x = playerMesh.position.x;
+      camera.position.z = playerMesh.position.z + GAME_CONFIG.camera.followDistance;
+      camera.lookAt(playerMesh.position.x, 0, playerMesh.position.z);
 }
 
 function showToast(message) {

@@ -41,6 +41,10 @@ export const GAME_CONFIG = Object.freeze({
     moveSpeed: 7,
     encounterDistance: 6
   },
+  camera: {
+    verticalDistance: 18,
+    followDistance: 18
+  },
   encounters: {
     baseChance: 0.18,
     scalePerBoss: 0.03
