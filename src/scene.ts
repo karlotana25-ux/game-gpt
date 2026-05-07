@@ -16,6 +16,12 @@ const billboardMeshes: THREE.Mesh[] = [];
 export { scene, camera, renderer, clock, floorMesh, playerMesh, activeEnemyMesh, billboardMeshes };
 
 export function setupThreeScene(domContainer: HTMLElement) {
+  console.log('Setting up scene, krpgMode:', GAME_CONFIG.krpgMode);
+  if (GAME_CONFIG.krpgMode) {
+    console.log('Using KRPG setup');
+    return setupKRPGThreeScene(domContainer);
+  }
+
   scene = new THREE.Scene();
   scene.background = new THREE.Color("#0a1820");
   scene.fog = new THREE.Fog("#0a1820", 22, 56);
@@ -85,7 +91,7 @@ export function createOrReplacePlayerMesh(className: string) {
     removeBillboard(playerMesh);
     scene.remove(playerMesh);
   }
-  const texture = createCharacterTexture(className);
+  const texture = GAME_CONFIG.krpgMode ? createKRPGCharacterTexture() : createCharacterTexture(className);
   playerMesh = createBillboardMesh(texture, 2.0, 2.0); // Square mesh for 16-bit
 
   // Set view to 1/4 of the width and 1/8 of the height
@@ -120,7 +126,11 @@ export function clearEnemyMesh() {
 
 export function createBillboardMesh(texture: THREE.Texture, width: number, height: number): THREE.Mesh {
   const geometry = new THREE.PlaneGeometry(width, height);
-  const material = new THREE.MeshBasicMaterial({ map: texture, transparent: true });
+  const material = new THREE.MeshBasicMaterial({
+    map: texture,
+    transparent: true,
+    alphaTest: GAME_CONFIG.krpgMode ? 0.5 : 0
+  });
   const mesh = new THREE.Mesh(geometry, material);
   billboardMeshes.push(mesh);
   return mesh;
@@ -316,8 +326,224 @@ export function handleResize() {
 }
 
 export function renderScene() {
+  if (GAME_CONFIG.krpgMode) {
+    return renderKRPG();
+  }
   for (const billboard of billboardMeshes) {
     billboard.lookAt(camera.position.x, billboard.position.y, camera.position.z);
+  }
+  renderer.render(scene, camera);
+}
+
+/**
+ * KRPG-STYLE SCENE SETUP WITH WHIMSICAL ELEMENTS
+ */
+export function setupKRPGThreeScene(domContainer: HTMLElement) {
+  console.log('Initializing KRPG scene');
+  scene = new THREE.Scene();
+  scene.background = new THREE.Color(GAME_CONFIG.krpgPalette.bg);
+  scene.fog = new THREE.Fog(GAME_CONFIG.krpgPalette.fog, 30, 80);
+
+  camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 500);
+  camera.position.set(0, GAME_CONFIG.camera.verticalDistance, GAME_CONFIG.camera.followDistance);
+  camera.lookAt(0, 0, 0);
+
+  renderer = new THREE.WebGLRenderer({ antialias: false, alpha: false });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  domContainer.appendChild(renderer.domElement);
+
+  clock = new THREE.Clock();
+
+  // Whimsical Global Illumination
+  const ambient = new THREE.AmbientLight("#ffffff", 1.2);
+  scene.add(ambient);
+  const sun = new THREE.DirectionalLight("#fff9e8", 0.8);
+  sun.position.set(10, 20, 10);
+  scene.add(sun);
+
+  buildKRPGWorld();
+  createOrReplacePlayerMesh("Warrior");
+
+  window.addEventListener("resize", handleResize);
+
+  // Tweakpane debug for KRPG - following Rule 5
+  // const pane = new Pane();
+  // pane.addBinding(camera.position, 'x', { min: -50, max: 50, step: 0.1 });
+  // pane.addBinding(camera.position, 'y', { min: -50, max: 50, step: 0.1 });
+  // pane.addBinding(camera.position, 'z', { min: -50, max: 50, step: 0.1 });
+  // pane.addBinding(scene.fog, 'near', { min: 0, max: 100, step: 1 });
+  // pane.addBinding(scene.fog, 'far', { min: 0, max: 200, step: 1 });
+}
+
+/**
+ * GENERATES HAND-PAINTED STYLE GROUND AND PROPS
+ */
+function buildKRPGWorld() {
+  // 1. Hand-painted Grass Texture
+  const floorTex = createPixelTexture(32, 32, (ctx) => {
+    ctx.fillStyle = GAME_CONFIG.krpgPalette.grass_base;
+    ctx.fillRect(0, 0, 32, 32);
+    // Add "painted" grass tufts
+    ctx.fillStyle = GAME_CONFIG.krpgPalette.grass_dark;
+    for(let i=0; i<8; i++) {
+      ctx.fillRect(Math.random()*32, Math.random()*32, 2, 1);
+    }
+    // Add pastel flowers
+    ctx.fillStyle = GAME_CONFIG.krpgPalette.flower;
+    for(let i=0; i<3; i++) {
+      ctx.fillRect(Math.random()*32, Math.random()*32, 2, 2);
+    }
+  });
+  floorTex.repeat.set(18, 18);
+  floorTex.wrapS = floorTex.wrapT = THREE.RepeatWrapping;
+
+  if (floorMesh) {
+    scene.remove(floorMesh);
+  }
+  const floorSize = GAME_CONFIG.world.mapHalfExtent * 2;
+  const floor = new THREE.Mesh(
+    new THREE.PlaneGeometry(floorSize, floorSize),
+    new THREE.MeshLambertMaterial({ map: floorTex })
+  );
+  floor.rotation.x = -Math.PI / 2;
+  floor.position.y = 0;
+  scene.add(floor);
+  floorMesh = floor;
+
+  // 2. Add some "Puffy" Whimsical Trees
+  const propGroup = new THREE.Group();
+  const treeCount = 34;
+  for (let i = 0; i < treeCount; i += 1) {
+    const tree = createBillboardMesh(createKRPGTreeTexture(), 4, 6);
+    tree.position.x = randomInt(-21, 21);
+    tree.position.z = randomInt(-21, 21);
+    tree.position.y = 1.7;
+    propGroup.add(tree);
+  }
+  scene.add(propGroup);
+}
+
+/**
+ * GENERATES THE 1:3 CHIBI CHARACTER
+ * With 8 directions, spiky hair, and thick outlines.
+ */
+export function createKRPGCharacterTexture(): THREE.Texture {
+  return createPixelTexture(256, 512, (ctx) => {
+    const drawChibi = (row, col, dir) => {
+      const ox = col * 64 + 16; // Center in cell
+      const oy = row * 64;
+      const isStepping = col === 1 || col === 3;
+      const bob = isStepping ? 2 : 0;
+
+      // --- 1. SHADOW (Ground) ---
+      ctx.fillStyle = "rgba(0,0,0,0.15)";
+      ctx.beginPath();
+      ctx.ellipse(ox+16, oy+60, 12, 5, 0, 0, Math.PI*2);
+      ctx.fill();
+
+      // Helper to draw with outline
+      const rectO = (x, y, w, h, col) => {
+        ctx.fillStyle = GAME_CONFIG.krpgPalette.outline;
+        ctx.fillRect(ox+x-1, oy+y-1+bob, w+2, h+2); // Outline
+        ctx.fillStyle = col;
+        ctx.fillRect(ox+x, oy+y+bob, w, h); // Fill
+      };
+
+      // --- 2. LEGS ---
+      if (dir === 'down' || dir === 'up' || dir === 'dl' || dir === 'dr' || dir === 'ul' || dir === 'ur') {
+        rectO(10, 48, 4, 8, GAME_CONFIG.krpgPalette.skin);
+        rectO(18, 48, 4, 8, GAME_CONFIG.krpgPalette.skin);
+      } else {
+        rectO(13, 48, 6, 8, GAME_CONFIG.krpgPalette.skin);
+      }
+
+      // --- 3. BODY (1/3 ratio logic) ---
+      rectO(8, 32, 16, 18, GAME_CONFIG.krpgPalette.clothing);
+
+      // --- 4. ARMS & FACE (Directional Logic) ---
+      ctx.fillStyle = GAME_CONFIG.krpgPalette.skin;
+
+      if (dir === 'dl') {
+        rectO(7, 14, 3, 7, GAME_CONFIG.krpgPalette.skin); // Back arm
+      } else if (dir === 'dr') {
+        rectO(22, 14, 3, 7, GAME_CONFIG.krpgPalette.skin);
+      } else if (dir === 'down') {
+        const armOffset = isStepping ? (col === 1 ? -2 : 2) : 0;
+        rectO(6, 14 + armOffset, 3, 7, GAME_CONFIG.krpgPalette.skin);
+        rectO(23, 14 - armOffset, 3, 7, GAME_CONFIG.krpgPalette.skin);
+      } else if (dir === 'left') {
+        rectO(14, 14, 3, 8, GAME_CONFIG.krpgPalette.skin);
+      } else if (dir === 'right') {
+        rectO(15, 14, 3, 8, GAME_CONFIG.krpgPalette.skin);
+      } else if (dir === 'up') {
+        rectO(8, 14, 3, 7, GAME_CONFIG.krpgPalette.skin);
+        rectO(21, 14, 3, 7, GAME_CONFIG.krpgPalette.skin);
+      } else if (dir === 'ul') {
+        rectO(14, 14, 3, 8, GAME_CONFIG.krpgPalette.skin);
+      } else if (dir === 'ur') {
+        rectO(15, 14, 3, 8, GAME_CONFIG.krpgPalette.skin);
+      }
+
+      // --- 5. HEAD (The big "SD" head) ---
+      // Hair/Head base
+      rectO(4, 4, 24, 26, GAME_CONFIG.krpgPalette.skin);
+
+      // Spiky Hair layer
+      ctx.fillStyle = GAME_CONFIG.krpgPalette.hair;
+      ctx.fillRect(ox+4, oy+4+bob, 24, 10); // Top
+      ctx.fillRect(ox+2, oy+10+bob, 6, 8);  // Left Spike
+      ctx.fillRect(ox+24, oy+10+bob, 6, 8); // Right Spike
+
+      // Over-the-top Gear: Cat Ears
+      rectO(4, -2, 6, 6, GAME_CONFIG.krpgPalette.hair);
+      rectO(22, -2, 6, 6, GAME_CONFIG.krpgPalette.hair);
+
+      // --- 6. EXPRESSIVE EYES (Anime style) ---
+      if (!(dir === 'up' || dir === 'ul' || dir === 'ur')) {
+        ctx.fillStyle = GAME_CONFIG.krpgPalette.eye;
+        const eyePos = dir.includes('left') ? [6, 14] : dir.includes('right') ? [12, 20] : [8, 20];
+        ctx.fillRect(ox+eyePos[0]+4, oy+16+bob, 3, 6);
+        ctx.fillRect(ox+eyePos[1]+4, oy+16+bob, 3, 6);
+        // Eye shine
+        ctx.fillStyle = "white";
+        ctx.fillRect(ox+eyePos[0]+4, oy+16+bob, 1, 2);
+        ctx.fillRect(ox+eyePos[1]+4, oy+16+bob, 1, 2);
+      }
+    };
+
+    const dirs = ['down', 'up', 'left', 'right', 'dl', 'dr', 'ul', 'ur'];
+    dirs.forEach((dir, row) => {
+      for (let col = 0; col < 4; col++) drawChibi(row, col, dir);
+    });
+  });
+}
+
+function createKRPGTreeTexture(): THREE.Texture {
+  return createPixelTexture(64, 96, (ctx) => {
+    // Outline for the whole tree
+    ctx.fillStyle = GAME_CONFIG.krpgPalette.outline;
+    ctx.beginPath(); ctx.arc(32, 35, 30, 0, Math.PI*2); ctx.fill(); // Top puff
+    ctx.fillRect(28, 60, 8, 30); // Trunk
+
+    // Tree Green (Puffy/Round)
+    ctx.fillStyle = "#5ba344";
+    ctx.beginPath(); ctx.arc(32, 35, 28, 0, Math.PI*2); ctx.fill();
+
+    // Highlight (Hand-painted feel)
+    ctx.fillStyle = "#82d166";
+    ctx.beginPath(); ctx.arc(22, 25, 12, 0, Math.PI*2); ctx.fill();
+
+    // Trunk
+    ctx.fillStyle = "#7a5843";
+    ctx.fillRect(30, 60, 4, 28);
+  });
+}
+
+export function renderKRPG() {
+  for (const b of billboardMeshes) {
+    b.lookAt(camera.position.x, b.position.y, camera.position.z);
   }
   renderer.render(scene, camera);
 }

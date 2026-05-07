@@ -31,6 +31,19 @@ export const GAME_PHASE = Object.freeze({
 });
 
 export const GAME_CONFIG = Object.freeze({
+  krpgMode: true,
+  krpgPalette: {
+    bg: "#d0e1ff",       // Whimsical sky blue
+    fog: "#e2ebf9",      // Soft horizon fog
+    grass_base: "#7ec850",
+    grass_dark: "#67a940",
+    flower: "#ffebf5",   // Pastel pink flowers
+    outline: "#2d1b4d",  // Deep purple outline
+    skin: "#ffe4d0",
+    hair: "#ff70a6",     // Vibrant pink
+    clothing: "#6ba3ff", // Pastel blue
+    eye: "#333333"
+  },
   pointBuy: {
     pool: 10,
     min: 3,
