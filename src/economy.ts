@@ -1,0 +1,1 @@
+// Economy module - currently empty, functions moved to ui.ts to avoid circular imports
