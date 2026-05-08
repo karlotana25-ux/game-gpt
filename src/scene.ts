@@ -1,9 +1,6 @@
 import * as THREE from 'three';
-import { Pane } from 'tweakpane';
 import { GAME_CONFIG, SPRITE_CONFIG } from './config.js';
 import { SpriteAnimator } from './spriteAnimator.js';
-
-// To avoid too large, keep here for now.
 
 let scene: THREE.Scene;
 let camera: THREE.PerspectiveCamera;
@@ -122,7 +119,7 @@ export function createOrReplacePlayerMesh(className: string) {
     removeBillboard(playerMesh);
     scene.remove(playerMesh);
   }
-  const texture = idleTexture || (GAME_CONFIG.krpgMode ? createKRPGCharacterTexture() : createCharacterTexture(className));
+  const texture = idleTexture;
   playerMesh = createBillboardMesh(texture, 2.0, 2.0); // Square mesh for 16-bit
 
   if (idleTexture && walkTexture) {
@@ -212,96 +209,7 @@ export function createFloorTexture(): THREE.Texture {
   });
 }
 
-export function createCharacterTexture(className: string): THREE.Texture {
-  const classConfig = GAME_CONFIG.classes[className] || GAME_CONFIG.classes.Warrior;
-  const [light, mid, dark, shadow] = classConfig.color;
 
-  return createPixelTexture(128, 256, (ctx: CanvasRenderingContext2D) => {
-    ctx.clearRect(0, 0, 128, 256);
-
-    const drawCharacterFrame = (dirRow: number, frameCol: number, direction: string) => {
-      const ox = frameCol * 32;
-      const oy = dirRow * 32;
-      const isStepping = frameCol === 1 || frameCol === 3;
-      const stepSide = frameCol === 1 ? 'L' : 'R';
-      const bob = isStepping ? 1 : 0;
-
-      // 1. Shadow
-      ctx.fillStyle = "rgba(0,0,0,0.2)";
-      ctx.beginPath();
-      ctx.ellipse(ox + 16, oy + 28, 8, 4, 0, 0, Math.PI * 2);
-      ctx.fill();
-
-      // 2. Legs
-      ctx.fillStyle = dark;
-      if (['down', 'up', 'down-left', 'down-right', 'up-left', 'up-right'].includes(direction)) {
-        ctx.fillRect(ox + 10, oy + 22 + bob, 4, 6 - bob);
-        ctx.fillRect(ox + 18, oy + 22 + bob, 4, 6 - bob);
-      } else {
-        ctx.fillRect(ox + 13, oy + 22 + bob, 6, 6 - bob);
-      }
-
-      // 3. Torso
-      ctx.fillStyle = mid;
-      ctx.fillRect(ox + 9, oy + 12 + bob, 14, 11);
-      ctx.fillStyle = shadow;
-      ctx.fillRect(ox + 9, oy + 21 + bob, 14, 2);
-
-      // 4. Arms & Face (Diagonal Logic)
-      ctx.fillStyle = light;
-
-      // Face/Eyes logic
-      const hasFace = !direction.includes('up');
-
-      if (direction === 'down-left') {
-        ctx.fillRect(ox + 7, oy + 14 + bob, 3, 7); // Back arm
-        if (hasFace) {
-          ctx.fillStyle = shadow;
-          ctx.fillRect(ox + 10, oy + 7 + bob, 2, 2); // Closer eye
-          ctx.fillRect(ox + 14, oy + 7 + bob, 2, 2); // Farther eye
-        }
-      } else if (direction === 'down-right') {
-        ctx.fillRect(ox + 22, oy + 14 + bob, 3, 7);
-        if (hasFace) {
-          ctx.fillStyle = shadow;
-          ctx.fillRect(ox + 16, oy + 7 + bob, 2, 2);
-          ctx.fillRect(ox + 20, oy + 7 + bob, 2, 2);
-        }
-      } else if (direction === 'down') {
-        const armOffset = isStepping ? (stepSide === 'L' ? -2 : 2) : 0;
-        ctx.fillRect(ox + 6, oy + 14 + bob + armOffset, 3, 7);
-        ctx.fillRect(ox + 23, oy + 14 + bob - armOffset, 3, 7);
-        ctx.fillStyle = shadow;
-        ctx.fillRect(ox + 12, oy + 7 + bob, 2, 2);
-        ctx.fillRect(ox + 18, oy + 7 + bob, 2, 2);
-      } else if (direction.includes('left')) {
-        ctx.fillRect(ox + 14, oy + 14 + bob, 3, 8);
-        if (hasFace) { ctx.fillStyle = shadow; ctx.fillRect(ox + 11, oy + 7 + bob, 2, 2); }
-      } else if (direction.includes('right')) {
-        ctx.fillRect(ox + 15, oy + 14 + bob, 3, 8);
-        if (hasFace) { ctx.fillStyle = shadow; ctx.fillRect(ox + 19, oy + 7 + bob, 2, 2); }
-      }
-
-      // 5. Head & Hair
-      ctx.fillStyle = mid;
-      ctx.fillRect(ox + 10, oy + 3 + bob, 12, 10);
-      ctx.fillStyle = dark;
-      ctx.fillRect(ox + 9, oy + 2 + bob, 14, 5);
-    };
-
-    // Draw 8-direction grid
-    const dirs = [
-      'down', 'up', 'left', 'right',
-      'down-left', 'down-right', 'up-left', 'up-right'
-    ];
-
-    dirs.forEach((dir, row) => {
-      for (let col = 0; col < 4; col++) {
-        drawCharacterFrame(row, col, dir);
-      }
-    });
-  });
-}
 
 export function createEnemyTexture(isBoss: boolean): THREE.Texture {
   const tone = isBoss
@@ -377,18 +285,7 @@ export function handleResize() {
 
 export function renderScene() {
   const delta = clock.getDelta();
-  if (GAME_CONFIG.krpgMode) {
-    return renderKRPG();
-  }
-  for (const billboard of billboardMeshes) {
-    billboard.lookAt(camera.position.x, billboard.position.y, camera.position.z);
-  }
-  if (playerAnimator) {
-    playerAnimator.setMoving(playerVelocity.length() > 0.1);
-    playerAnimator.setDirection(getDirectionFromVelocity(playerVelocity));
-    playerAnimator.update(delta);
-  }
-  renderer.render(scene, camera);
+  return renderKRPG();
 }
 
 /**
@@ -425,14 +322,6 @@ export async function setupKRPGThreeScene(domContainer: HTMLElement) {
   createOrReplacePlayerMesh("Warrior");
 
   window.addEventListener("resize", handleResize);
-
-  // Tweakpane debug for KRPG - following Rule 5
-  // const pane = new Pane();
-  // pane.addBinding(camera.position, 'x', { min: -50, max: 50, step: 0.1 });
-  // pane.addBinding(camera.position, 'y', { min: -50, max: 50, step: 0.1 });
-  // pane.addBinding(camera.position, 'z', { min: -50, max: 50, step: 0.1 });
-  // pane.addBinding(scene.fog, 'near', { min: 0, max: 100, step: 1 });
-  // pane.addBinding(scene.fog, 'far', { min: 0, max: 200, step: 1 });
 }
 
 /**
@@ -487,96 +376,7 @@ function buildKRPGWorld() {
  * GENERATES THE 1:3 CHIBI CHARACTER
  * With 8 directions, spiky hair, and thick outlines.
  */
-export function createKRPGCharacterTexture(): THREE.Texture {
-  return createPixelTexture(256, 512, (ctx) => {
-    const drawChibi = (row, col, dir) => {
-      const ox = col * 64 + 16; // Center in cell
-      const oy = row * 64;
-      const isStepping = col === 1 || col === 3;
-      const bob = isStepping ? 2 : 0;
 
-      // --- 1. SHADOW (Ground) ---
-      ctx.fillStyle = "rgba(0,0,0,0.15)";
-      ctx.beginPath();
-      ctx.ellipse(ox+16, oy+60, 12, 5, 0, 0, Math.PI*2);
-      ctx.fill();
-
-      // Helper to draw with outline
-      const rectO = (x, y, w, h, col) => {
-        ctx.fillStyle = GAME_CONFIG.krpgPalette.outline;
-        ctx.fillRect(ox+x-1, oy+y-1+bob, w+2, h+2); // Outline
-        ctx.fillStyle = col;
-        ctx.fillRect(ox+x, oy+y+bob, w, h); // Fill
-      };
-
-      // --- 2. LEGS ---
-      if (dir === 'down' || dir === 'up' || dir === 'dl' || dir === 'dr' || dir === 'ul' || dir === 'ur') {
-        rectO(10, 48, 4, 8, GAME_CONFIG.krpgPalette.skin);
-        rectO(18, 48, 4, 8, GAME_CONFIG.krpgPalette.skin);
-      } else {
-        rectO(13, 48, 6, 8, GAME_CONFIG.krpgPalette.skin);
-      }
-
-      // --- 3. BODY (1/3 ratio logic) ---
-      rectO(8, 32, 16, 18, GAME_CONFIG.krpgPalette.clothing);
-
-      // --- 4. ARMS & FACE (Directional Logic) ---
-      ctx.fillStyle = GAME_CONFIG.krpgPalette.skin;
-
-      if (dir === 'dl') {
-        rectO(7, 14, 3, 7, GAME_CONFIG.krpgPalette.skin); // Back arm
-      } else if (dir === 'dr') {
-        rectO(22, 14, 3, 7, GAME_CONFIG.krpgPalette.skin);
-      } else if (dir === 'down') {
-        const armOffset = isStepping ? (col === 1 ? -2 : 2) : 0;
-        rectO(6, 14 + armOffset, 3, 7, GAME_CONFIG.krpgPalette.skin);
-        rectO(23, 14 - armOffset, 3, 7, GAME_CONFIG.krpgPalette.skin);
-      } else if (dir === 'left') {
-        rectO(14, 14, 3, 8, GAME_CONFIG.krpgPalette.skin);
-      } else if (dir === 'right') {
-        rectO(15, 14, 3, 8, GAME_CONFIG.krpgPalette.skin);
-      } else if (dir === 'up') {
-        rectO(8, 14, 3, 7, GAME_CONFIG.krpgPalette.skin);
-        rectO(21, 14, 3, 7, GAME_CONFIG.krpgPalette.skin);
-      } else if (dir === 'ul') {
-        rectO(14, 14, 3, 8, GAME_CONFIG.krpgPalette.skin);
-      } else if (dir === 'ur') {
-        rectO(15, 14, 3, 8, GAME_CONFIG.krpgPalette.skin);
-      }
-
-      // --- 5. HEAD (The big "SD" head) ---
-      // Hair/Head base
-      rectO(4, 4, 24, 26, GAME_CONFIG.krpgPalette.skin);
-
-      // Spiky Hair layer
-      ctx.fillStyle = GAME_CONFIG.krpgPalette.hair;
-      ctx.fillRect(ox+4, oy+4+bob, 24, 10); // Top
-      ctx.fillRect(ox+2, oy+10+bob, 6, 8);  // Left Spike
-      ctx.fillRect(ox+24, oy+10+bob, 6, 8); // Right Spike
-
-      // Over-the-top Gear: Cat Ears
-      rectO(4, -2, 6, 6, GAME_CONFIG.krpgPalette.hair);
-      rectO(22, -2, 6, 6, GAME_CONFIG.krpgPalette.hair);
-
-      // --- 6. EXPRESSIVE EYES (Anime style) ---
-      if (!(dir === 'up' || dir === 'ul' || dir === 'ur')) {
-        ctx.fillStyle = GAME_CONFIG.krpgPalette.eye;
-        const eyePos = dir.includes('left') ? [6, 14] : dir.includes('right') ? [12, 20] : [8, 20];
-        ctx.fillRect(ox+eyePos[0]+4, oy+16+bob, 3, 6);
-        ctx.fillRect(ox+eyePos[1]+4, oy+16+bob, 3, 6);
-        // Eye shine
-        ctx.fillStyle = "white";
-        ctx.fillRect(ox+eyePos[0]+4, oy+16+bob, 1, 2);
-        ctx.fillRect(ox+eyePos[1]+4, oy+16+bob, 1, 2);
-      }
-    };
-
-    const dirs = ['down', 'up', 'left', 'right', 'dl', 'dr', 'ul', 'ur'];
-    dirs.forEach((dir, row) => {
-      for (let col = 0; col < 4; col++) drawChibi(row, col, dir);
-    });
-  });
-}
 
 function createKRPGTreeTexture(): THREE.Texture {
   return createPixelTexture(64, 96, (ctx) => {

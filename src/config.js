@@ -33,13 +33,7 @@ export const STAT_LABELS = {
   intelligence: "Intelligence"
 };
 
-export const STAT_DESCRIPTIONS = {
-  strength: "Physical power and a small HP bonus.",
-  agility: "Dodge chance and initiative order.",
-  dexterity: "Crit chance and accuracy.",
-  vitality: "HP and physical defense.",
-  intelligence: "Magic damage, healing power, and mana."
-};
+
 
 export const GAME_PHASE = Object.freeze({
   MAIN_MENU: "main_menu",

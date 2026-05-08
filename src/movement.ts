@@ -1,3 +1,4 @@
+import * as THREE from 'three';
 import { useGameStore } from './state.js';
 import { GAME_CONFIG } from './config.js';
 import { clamp } from './utils.js';
@@ -79,6 +80,3 @@ export function updateExplorationMovement(delta: number) {
     camera.lookAt(playerMesh.position.x, 0, playerMesh.position.z);
   }
 }
-
-// Import THREE
-import * as THREE from 'three';
