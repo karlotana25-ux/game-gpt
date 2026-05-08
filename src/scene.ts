@@ -1,6 +1,8 @@
 import * as THREE from 'three';
-import { GAME_CONFIG, SPRITE_CONFIG } from './config.js';
+import { GAME_CONFIG, SPRITE_CONFIG, ENEMY_SPRITE_CONFIG } from './config.js';
 import { SpriteAnimator } from './spriteAnimator.js';
+import { RoamingEnemy } from './types.js';
+import { useGameStore } from './state.js';
 
 let scene: THREE.Scene;
 let camera: THREE.PerspectiveCamera;
@@ -8,14 +10,14 @@ let renderer: THREE.WebGLRenderer;
 let clock: THREE.Clock;
 let floorMesh: THREE.Mesh;
 let playerMesh: THREE.Mesh;
-let activeEnemyMesh: THREE.Mesh;
+let enemyMeshes: Map<string, THREE.Object3D> = new Map();
 let playerVelocity: THREE.Vector3 = new THREE.Vector3();
 let idleTexture: THREE.Texture;
 let walkTexture: THREE.Texture;
 let playerAnimator: SpriteAnimator;
-const billboardMeshes: THREE.Mesh[] = [];
+const billboardMeshes: THREE.Object3D[] = [];
 
-export { scene, camera, renderer, clock, floorMesh, playerMesh, activeEnemyMesh, billboardMeshes, playerVelocity };
+export { scene, camera, renderer, clock, floorMesh, playerMesh, enemyMeshes, billboardMeshes, playerVelocity };
 
 export function loadSpriteTextures(): Promise<void> {
   const loader = new THREE.TextureLoader();
@@ -140,25 +142,54 @@ export function createOrReplacePlayerMesh(className: string) {
   scene.add(playerMesh);
 }
 
+export function createRoamingEnemyMesh(roamingEnemy: RoamingEnemy): THREE.Object3D {
+  const enemy = roamingEnemy.enemy;
+  let texture: THREE.Texture;
+  if (enemy.spriteKey && ENEMY_SPRITE_CONFIG[enemy.spriteKey]) {
+    const config = ENEMY_SPRITE_CONFIG[enemy.spriteKey];
+    texture = new THREE.TextureLoader().load(config.path);
+    texture.magFilter = THREE.NearestFilter;
+    texture.minFilter = THREE.NearestFilter;
+    texture.repeat.set(config.frameSize / (config.sheetSize.cols * config.frameSize), config.frameSize / (config.sheetSize.rows * config.frameSize));
+  } else {
+    texture = createEnemyTexture(enemy.isBoss);
+  }
+  const material = new THREE.SpriteMaterial({ map: texture, transparent: true });
+  const sprite = new THREE.Sprite(material);
+  sprite.scale.set(enemy.isBoss ? 4 : 2, enemy.isBoss ? 4 : 2, 1);
+  sprite.position.set(roamingEnemy.position.x, 1.4, roamingEnemy.position.z);
+  enemyMeshes.set(enemy.id, sprite);
+  // @ts-ignore
+  scene.add(sprite);
+  return sprite;
+}
+
+export function removeRoamingEnemyMesh(id: string) {
+  const mesh = enemyMeshes.get(id);
+  if (mesh) {
+    removeBillboard(mesh);
+    scene.remove(mesh);
+    enemyMeshes.delete(id);
+  }
+}
+
 export function createEnemyMesh(isBoss: boolean) {
-  clearEnemyMesh();
+  // Legacy function for backwards compatibility, now unused
+  console.warn('createEnemyMesh is deprecated; use createRoamingEnemyMesh');
   const enemyTexture = createEnemyTexture(isBoss);
-  activeEnemyMesh = createBillboardMesh(enemyTexture, 2.2, 2.8);
-  activeEnemyMesh.position.set(
+  const mesh = createBillboardMesh(enemyTexture, 2.2, 2.8);
+  mesh.position.set(
     playerMesh.position.x + randomInt(-3, 3),
     1.4,
     playerMesh.position.z + randomInt(-3, 3)
   );
-  scene.add(activeEnemyMesh);
+  scene.add(mesh);
+  return mesh;
 }
 
 export function clearEnemyMesh() {
-  if (!activeEnemyMesh) {
-    return;
-  }
-  removeBillboard(activeEnemyMesh);
-  scene.remove(activeEnemyMesh);
-  activeEnemyMesh = null;
+  // Legacy, now unused
+  console.warn('clearEnemyMesh is deprecated; use removeRoamingEnemyMesh');
 }
 
 export function createBillboardMesh(texture: THREE.Texture, width: number, height: number): THREE.Mesh {
@@ -173,8 +204,8 @@ export function createBillboardMesh(texture: THREE.Texture, width: number, heigh
   return mesh;
 }
 
-export function removeBillboard(mesh: THREE.Mesh) {
-  const index = billboardMeshes.indexOf(mesh);
+export function removeBillboard(obj: THREE.Object3D) {
+  const index = billboardMeshes.indexOf(obj);
   if (index >= 0) {
     billboardMeshes.splice(index, 1);
   }
@@ -399,6 +430,20 @@ function createKRPGTreeTexture(): THREE.Texture {
   });
 }
 
+let enemyAnimationFrame = 0;
+let lastEnemyAnimationUpdate = 0;
+
+export function updateEnemyAnimation(time: number, spriteMaterial: THREE.SpriteMaterial) {
+  if (time - lastEnemyAnimationUpdate > 200) {
+    lastEnemyAnimationUpdate = time;
+    enemyAnimationFrame = (enemyAnimationFrame + 1) % 4;
+    const col = enemyAnimationFrame;
+    const row = 0; // Idle for now
+    spriteMaterial.map.offset.x = col / 4;
+    spriteMaterial.map.offset.y = 1 - (row + 1) / 4;
+  }
+}
+
 export function renderKRPG() {
   const delta = clock.getDelta();
   for (const b of billboardMeshes) {
@@ -408,6 +453,17 @@ export function renderKRPG() {
     playerAnimator.setMoving(playerVelocity.length() > 0.1);
     playerAnimator.setDirection(getDirectionFromVelocity(playerVelocity));
     playerAnimator.update(delta);
+  }
+  // Update roaming enemy positions and animations
+  const time = clock.elapsedTime;
+  for (const [id, obj] of enemyMeshes) {
+    const roamingEnemy = useGameStore.getState().roamingEnemies.find(e => e.id === id);
+    if (roamingEnemy) {
+      obj.position.set(roamingEnemy.position.x, 1.4, roamingEnemy.position.z);
+      if (roamingEnemy.enemy.spriteKey && obj instanceof THREE.Sprite) {
+        updateEnemyAnimation(time, obj.material as THREE.SpriteMaterial);
+      }
+    }
   }
   renderer.render(scene, camera);
 }

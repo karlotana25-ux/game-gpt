@@ -4,7 +4,7 @@ import { GAME_CONFIG } from './config.js';
 import { clamp } from './utils.js';
 import { camera, playerMesh, playerVelocity } from './scene.js';
 import { keysDown } from './ui.js';
-import { triggerEncounterIfNeeded } from './game-logic.js';
+import { checkRoamingEncounter, updateRoamingEnemies } from './game-logic.js';
 import { updateExplorationHud } from './ui.js';
 import { GamePhase } from './types.js';
 
@@ -69,9 +69,9 @@ export function updateExplorationMovement(delta: number) {
 
   const movedDistance = Math.hypot(playerMesh.position.x - oldX, playerMesh.position.z - oldZ);
   if (movedDistance > 0) {
-    useGameStore.setState({ distanceSinceEncounter: state.distanceSinceEncounter + movedDistance });
     updateExplorationHud();
-    triggerEncounterIfNeeded();
+    updateRoamingEnemies(delta);
+    checkRoamingEncounter();
   }
 
   if (camera) {

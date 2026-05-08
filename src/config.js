@@ -2,6 +2,20 @@ export const SAVE_KEY = "echoes_tavern_star_save_v1";
 export const FINAL_BOSS_COUNT = 3;
 export const STAT_KEYS = ["strength", "agility", "dexterity", "vitality", "intelligence"];
 
+export const ENEMY_SPRITE_CONFIG = Object.freeze({
+  slime: {
+    path: './assets/Slime_Medium_Green.png',
+    frameSize: 32,
+    sheetSize: { cols: 4, rows: 4 },
+    animations: {
+      idle: [0, 1, 2, 3],
+      attack: [4, 5, 6, 7],
+      jump: [8, 9, 10, 11],
+      hit: [12, 13, 14, 15]
+    }
+  }
+});
+
 export const SPRITE_CONFIG = Object.freeze({
   idleSheetPath: 'assets/FDL/Free Character Sprites - Fantasy Dreamland/RPG Maker/RPG Maker MV/characters/$Char_001_Idle.png',
   walkSheetPath: 'assets/FDL/Free Character Sprites - Fantasy Dreamland/RPG Maker/RPG Maker MV/characters/$Char_001.png',
@@ -69,7 +83,15 @@ export const GAME_CONFIG = Object.freeze({
   world: {
     mapHalfExtent: 24,
     moveSpeed: 7,
-    encounterDistance: 6
+    encounterDistance: 6,
+    roamingEnemies: {
+      maxCount: 8,
+      spawnRadius: 20,
+      triggerDistance: 1.5,
+      moveSpeed: 2,
+      directionChangeInterval: 2000,
+      respawnDelay: 10000
+    }
   },
   camera: {
     verticalDistance: 18,

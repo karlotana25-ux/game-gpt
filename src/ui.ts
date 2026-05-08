@@ -7,6 +7,7 @@ import { GamePhase } from './types.js';
 import { resolveBattleRound, renderBattlePanel, appendBattleLog } from './battle.js';
 import { clearEnemyMesh, createOrReplacePlayerMesh, playerMesh } from './scene.js';
 import { setPlayerPosition } from './movement.js';
+import { spawnRoamingEnemies } from './game-logic.js';
 
 let toastTimer: number | null = null;
 let eventTimer: number | null = null;
@@ -613,8 +614,9 @@ export function switchPhase(phase: GamePhase) {
     updateHubPanel();
   } else if (phase === GamePhase.SHOP) {
     updateShopMemberSelect();
-  } else if (phase === GamePhase.EXPLORATION) {
-    updateExplorationHud();
+   } else if (phase === GamePhase.EXPLORATION) {
+     updateExplorationHud();
+     spawnRoamingEnemies();
   } else if (phase === GamePhase.BATTLE) {
     renderBattlePanel();
   } else if (phase === GamePhase.LOAD) {
@@ -627,13 +629,8 @@ export function updateExplorationHud() {
     return;
   }
   const state = useGameStore.getState();
-  const pulse = clamp(
-    Math.floor((state.distanceSinceEncounter / (GAME_CONFIG.world.encounterDistance / state.encounterRateMultiplier)) * 100),
-    0,
-    100
-  );
   dom.hudLocation.textContent = `Position: (${playerMesh.position.x.toFixed(1)}, ${playerMesh.position.z.toFixed(1)})`;
-  dom.hudEncounter.textContent = `Encounter Pulse: ${pulse}%`;
+  dom.hudEncounter.textContent = `Roaming Enemies: ${state.roamingEnemies.length}`;
   dom.hudGold.textContent = `Gold: ${state.gold}`;
   dom.hudBosses.textContent = `Bosses Defeated: ${state.bossesDefeated}`;
 }

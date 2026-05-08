@@ -20,5 +20,6 @@ export const useGameStore = create<GameState>()(devtools((set, get) => ({
   monstersDefeatedSinceBoss: 0,
   encounterRateMultiplier: 1,
   distanceSinceEncounter: 0,
-  battle: null
+  battle: null,
+  roamingEnemies: []
 }), { name: 'game-store' }));

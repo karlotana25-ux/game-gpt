@@ -74,7 +74,19 @@ export interface Enemy {
   critBonus: number;
   accuracyBonus: number;
   guard: boolean;
+  spriteKey?: string;
 }
+
+export interface RoamingEnemy {
+  id: string;
+  enemy: Enemy;
+  position: { x: number; z: number };
+  velocity: { x: number; z: number };
+  lastDirectionChange: number;
+  spawnTime: number;
+}
+
+export type BattleResult = "escape" | "victory" | "monster_win" | "boss_win" | "party_defeat";
 
 export interface BattleState {
   enemy: Enemy;
@@ -91,4 +103,5 @@ export interface GameState {
   encounterRateMultiplier: number;
   distanceSinceEncounter: number;
   battle: BattleState | null;
+  roamingEnemies: RoamingEnemy[];
 }

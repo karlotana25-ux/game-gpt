@@ -2,11 +2,11 @@ import { useGameStore, partyManager } from './state.js';
 import { GAME_CONFIG, FINAL_BOSS_COUNT } from './config.js';
 import { clamp, pickRandom, cloneStats } from './utils.js';
 import { CombatEngine } from './combat-engine.js';
-import { createEnemyMesh, clearEnemyMesh } from './scene.js';
+import { createRoamingEnemyMesh, removeRoamingEnemyMesh, playerMesh } from './scene.js';
 import { switchPhase, showToast, showBanner } from './ui.js';
 import { appendBattleLog, renderBattlePanel } from './battle.js';
 import { dom } from './dom.js';
-import { GamePhase, Enemy } from './types.js';
+import { GamePhase, Enemy, RoamingEnemy, BattleResult } from './types.js';
 
 export function triggerEncounterIfNeeded() {
   const state = useGameStore.getState();
@@ -43,12 +43,12 @@ export function buildEnemy(isBoss: boolean): Enemy {
     strength: 5 + level * 2 + (isBoss ? 3 : 0),
     agility: 4 + level + (isBoss ? 2 : 0),
     dexterity: 4 + level + (isBoss ? 2 : 0),
-    vitality: 5 + level * 2 + (isBoss ? 5 : 0),
-    intelligence: 4 + level + (isBoss ? 4 : 0)
+    vitality: 5 + level * 3 + (isBoss ? 10 : 0), // Higher for slimes
+    intelligence: 2 + level + (isBoss ? 2 : 0)
   };
 
-  const maxHp = stats.vitality * 10 + stats.strength * 2 + (isBoss ? 40 : 12);
-  const maxMp = stats.intelligence * 5 + (isBoss ? 16 : 0);
+  const maxHp = stats.vitality * 12 + (isBoss ? 100 : 20);
+  const maxMp = stats.intelligence * 5;
 
   return {
     id: `enemy-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
@@ -60,10 +60,11 @@ export function buildEnemy(isBoss: boolean): Enemy {
     maxHp,
     mp: maxMp,
     maxMp,
-    goldReward: 18 + level * (isBoss ? 12 : 5),
+    goldReward: 15 + level * (isBoss ? 20 : 5),
     critBonus: isBoss ? 4 : 0,
     accuracyBonus: isBoss ? 8 : 0,
-    guard: false
+    guard: false,
+    spriteKey: name.includes('Slime') ? 'slime' : undefined
   };
 }
 
@@ -84,6 +85,76 @@ export function shouldSpawnBoss(): boolean {
   return Math.random() < randomBossChance;
 }
 
+export function spawnRoamingEnemies() {
+  const state = useGameStore.getState();
+  const config = GAME_CONFIG.world.roamingEnemies;
+  const toSpawn = config.maxCount - state.roamingEnemies.length;
+  if (toSpawn <= 0) return;
+
+  const newEnemies: RoamingEnemy[] = [];
+  for (let i = 0; i < toSpawn; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const distance = Math.random() * config.spawnRadius;
+    const position = {
+      x: Math.cos(angle) * distance,
+      z: Math.sin(angle) * distance
+    };
+    const enemy = buildEnemy(shouldSpawnBoss());
+    const roamingEnemy: RoamingEnemy = {
+      id: enemy.id,
+      enemy,
+      position,
+      velocity: { x: 0, z: 0 },
+      lastDirectionChange: Date.now(),
+      spawnTime: Date.now()
+    };
+    newEnemies.push(roamingEnemy);
+    createRoamingEnemyMesh(roamingEnemy);
+  }
+  useGameStore.setState({ roamingEnemies: [...state.roamingEnemies, ...newEnemies] });
+}
+
+export function updateRoamingEnemies(delta: number) {
+  const state = useGameStore.getState();
+  const config = GAME_CONFIG.world.roamingEnemies;
+  const updatedEnemies = state.roamingEnemies.map(roaming => {
+    let { position, velocity, lastDirectionChange } = roaming;
+    const now = Date.now();
+    if (now - lastDirectionChange > config.directionChangeInterval) {
+      const angle = Math.random() * Math.PI * 2;
+      velocity = {
+        x: Math.cos(angle) * config.moveSpeed,
+        z: Math.sin(angle) * config.moveSpeed
+      };
+      lastDirectionChange = now;
+    }
+    position.x += velocity.x * delta;
+    position.z += velocity.z * delta;
+    position.x = clamp(position.x, -GAME_CONFIG.world.mapHalfExtent + 1, GAME_CONFIG.world.mapHalfExtent - 1);
+    position.z = clamp(position.z, -GAME_CONFIG.world.mapHalfExtent + 1, GAME_CONFIG.world.mapHalfExtent - 1);
+    return { ...roaming, position, velocity, lastDirectionChange };
+  });
+  useGameStore.setState({ roamingEnemies: updatedEnemies });
+}
+
+export function checkRoamingEncounter() {
+  const state = useGameStore.getState();
+  if (state.phase !== GamePhase.EXPLORATION || state.battle) return;
+
+  const playerPos = { x: playerMesh.position.x, z: playerMesh.position.z };
+  for (const roaming of state.roamingEnemies) {
+    const dist = Math.hypot(roaming.position.x - playerPos.x, roaming.position.z - playerPos.z);
+    if (dist <= GAME_CONFIG.world.roamingEnemies.triggerDistance) {
+      startBattle(roaming.enemy);
+      removeRoamingEnemyMesh(roaming.id);
+      useGameStore.setState({
+        roamingEnemies: state.roamingEnemies.filter(e => e.id !== roaming.id)
+      });
+      break;
+    }
+  }
+}
+
 export function startBattle(enemy: Enemy) {
   const battle = {
     enemy,
@@ -91,50 +162,50 @@ export function startBattle(enemy: Enemy) {
     log: [] as string[]
   };
   useGameStore.setState({ battle });
-  createEnemyMesh(enemy.isBoss);
+  // No mesh creation here; roaming enemy is already rendered
   switchPhase(GamePhase.BATTLE);
   appendBattleLog(`A ${enemy.isBoss ? "Boss" : "Monster"} appears: ${enemy.name}!`);
   appendBattleLog("Choose your action.");
   renderBattlePanel();
 }
 
-export function finishBattle(reason: string) {
+export function finishBattle(reason: BattleResult) {
   const state = useGameStore.getState();
   useGameStore.setState({ battle: null });
-  clearEnemyMesh();
+  // No mesh clearing; roaming enemy already removed
 
-  if (reason === "escape") {
-    switchPhase(GamePhase.EXPLORATION);
-    showToast("You escaped.");
-    return;
-  }
+  const outcomes: Record<BattleResult, () => void> = {
+    escape: () => {
+      switchPhase(GamePhase.EXPLORATION);
+      showToast("You escaped into the shadows.");
+    },
+    victory: () => {
+      const leader = partyManager.getLeader();
+      dom.endingTitle.textContent = "Slime Crisis Averted";
+      dom.endingSummary.textContent = `${leader?.name || "The Party"} dissolved the slime core. The realm is safe.`;
+      showBanner("The final seal breaks. Peace returns.");
+      switchPhase(GamePhase.ENDING);
+    },
+    monster_win: () => {
+      useGameStore.setState(s => ({ monstersDefeatedSinceBoss: s.monstersDefeatedSinceBoss + 1 }));
+      switchPhase(GamePhase.EXPLORATION);
+      showToast("The slime melts away.");
+    },
+    boss_win: () => {
+      useGameStore.setState(s => ({
+        bossesDefeated: s.bossesDefeated + 1,
+        monstersDefeatedSinceBoss: 0
+      }));
+      unlockFreedHero();
+      switchPhase(GamePhase.HUB);
+    },
+    party_defeat: () => {
+      switchPhase(GamePhase.HUB);
+      showToast("The party was engulfed! You wake up at the tavern.");
+    }
+  };
 
-  if (reason === "victory") {
-    const leader = partyManager.getLeader();
-    dom.endingTitle.textContent = "Final Boss Defeated";
-    dom.endingSummary.textContent = `${leader ? leader.name : "Your party"} cleared the final boss with a full 4-member team. The realm is free.`;
-    showBanner("The final seal breaks. Peace returns.");
-    switchPhase(GamePhase.ENDING);
-    return;
-  }
-
-  if (reason === "monster_win") {
-    switchPhase(GamePhase.EXPLORATION);
-    showToast("Victory. Continue exploring.");
-    return;
-  }
-
-  if (reason === "boss_win") {
-    switchPhase(GamePhase.HUB);
-    showBanner("Boss defeated. A new hero has been freed.");
-    return;
-  }
-
-  if (reason === "party_defeat") {
-    switchPhase(GamePhase.HUB);
-    showToast("Defeat. The tavern patched your wounds.");
-    return;
-  }
+  outcomes[reason]?.();
 }
 
 export function unlockFreedHero() {
