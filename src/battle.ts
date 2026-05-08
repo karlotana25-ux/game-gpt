@@ -1,6 +1,6 @@
 import { useGameStore, partyManager } from './state.js';
 import { CombatEngine } from './combat-engine.js';
-import { FINAL_BOSS_COUNT } from './config.js';
+import { FINAL_BOSS_COUNT, SPRITE_CONFIG, ENEMY_SPRITE_CONFIG } from './config.js';
 import { dom } from './dom.js';
 import { finishBattle, unlockFreedHero } from './game-logic.js';
 import { updateHubPanel } from './ui.js';
@@ -207,6 +207,8 @@ export function performPhysicalAttack(attacker: PartyMember | Enemy, defender: P
 
   const critTag = crit ? " critical" : "";
   appendBattleLog(`${attackerName} lands a${critTag} hit on ${defenderName} for ${damage}.`);
+
+  flickerSprite(side === 'enemy' ? 'player' : 'enemy');
   if (defender.hp <= 0) {
     if (side === "enemy") {
       appendBattleLog(`${defenderName} is knocked out.`);
@@ -239,32 +241,42 @@ export function appendBattleLog(message: string) {
     newLog.shift();
   }
   useGameStore.setState({ battle: { ...battle, log: newLog } });
-  renderBattlePanel();
 }
 
 export function renderBattlePanel() {
-  const state = useGameStore.getState();
-  const battle = state.battle;
-  if (!battle) {
-    dom.enemyName.textContent = "Enemy: -";
-    dom.enemyStats.textContent = "-";
-    dom.enemyHpFill.style.width = "0%";
-    dom.battleLog.innerHTML = "";
-    return;
+  const { battle } = useGameStore.getState();
+  if (!battle) return;
+
+  const { enemy } = battle;
+  const leader = partyManager.getLeader();
+
+  dom.enemyName.textContent = `Enemy: ${enemy.name}`;
+  dom.enemyStats.textContent = `Level ${enemy.level}`;
+  dom.enemyHpFill.style.width = `${(enemy.hp / enemy.maxHp) * 100}%`;
+  dom.enemyHpText.textContent = `${enemy.hp} / ${enemy.maxHp}`;
+
+  if (leader) {
+    dom.playerHpFill.style.width = `${(leader.hp / leader.maxHp) * 100}%`;
+    dom.playerHpFill.style.background = leader.hp > leader.maxHp * 0.5 ? '#66ee87' : leader.hp > leader.maxHp * 0.25 ? '#ffd700' : '#ff6262';
+    dom.playerHpText.textContent = `${leader.hp} / ${leader.maxHp}`;
+    dom.playerSprite.style.backgroundImage = `url(${SPRITE_CONFIG.idleSheetPath})`;
+    dom.playerSprite.style.backgroundSize = `${SPRITE_CONFIG.columns * 100}% ${SPRITE_CONFIG.rows * 100}%`;
+    dom.playerSprite.style.backgroundPosition = '0% 0%';
+    dom.playerSprite.textContent = '';
   }
 
-  const enemy = battle.enemy;
-  const enemyRole = enemy.isBoss ? "Boss" : "Monster";
-  dom.enemyName.textContent = `${enemyRole}: ${enemy.name}`;
-  dom.enemyStats.textContent = `Lvl ${enemy.level} | HP ${enemy.hp}/${enemy.maxHp} | MP ${enemy.mp}/${enemy.maxMp}`;
-  dom.enemyHpFill.style.width = `${Math.max(0, (enemy.hp / enemy.maxHp) * 100)}%`;
-  dom.battleLog.innerHTML = "";
-  for (const line of battle.log) {
-    const row = document.createElement("div");
-    row.textContent = line;
-    dom.battleLog.appendChild(row);
+  if (enemy.spriteKey && ENEMY_SPRITE_CONFIG[enemy.spriteKey]) {
+    const config = ENEMY_SPRITE_CONFIG[enemy.spriteKey];
+    dom.enemySprite.style.backgroundImage = `url(${config.path})`;
+    dom.enemySprite.style.backgroundSize = `${config.sheetSize.cols * 100}% ${config.sheetSize.rows * 100}%`;
+    dom.enemySprite.style.backgroundPosition = '0% 0%';
+    dom.enemySprite.textContent = '';
+  } else {
+    dom.enemySprite.style.backgroundImage = 'none';
+    dom.enemySprite.textContent = enemy.name.charAt(0).toUpperCase();
   }
-  dom.battleLog.scrollTop = dom.battleLog.scrollHeight;
+
+  dom.battleLog.textContent = battle.log.join('\n');
 }
 
 export function handleEnemyDefeat(enemy: Enemy) {
@@ -313,4 +325,75 @@ export function handlePartyDefeat() {
   useGameStore.setState({ gold: Math.max(0, state.gold - 24) });
   partyManager.healAllByPercent(0.35, 0.35);
   finishBattle("party_defeat");
+}
+
+let _nextCb: (() => void) | null = null;
+
+export function showText(msg: string, onNext: () => void) {
+  dom.battleMenu.classList.add('hidden');
+  dom.battleNextRow.classList.add('hidden');
+  dom.battleTextbox.textContent = msg;
+  _nextCb = onNext;
+  dom.battleNextRow.classList.remove('hidden');
+}
+
+export function showMenu() {
+  dom.battleNextRow.classList.add('hidden');
+  const leader = partyManager.getLeader();
+  dom.battleLeaderName.textContent = leader ? leader.name : 'Unknown';
+  dom.battleMenu.classList.remove('hidden');
+}
+
+export function handleBattleNext() {
+  if (_nextCb) {
+    const cb = _nextCb;
+    _nextCb = null;
+    cb();
+  }
+}
+
+export function flickerSprite(target: 'player' | 'enemy') {
+  const element = target === 'player' ? dom.playerSprite : dom.enemySprite;
+  element.classList.remove('flicker');
+  // Force reflow
+  element.offsetWidth;
+  element.classList.add('flicker');
+  setTimeout(() => element.classList.remove('flicker'), 450);
+}
+
+export function drainLog(done: () => void) {
+  const { battle } = useGameStore.getState();
+  if (!battle) return done();
+  const log = [...battle.log];
+  useGameStore.setState({ battle: { ...battle, log: [] } });
+  let index = 0;
+  const next = () => {
+    if (index < log.length) {
+      showText(log[index], next);
+      index++;
+    } else {
+      done();
+    }
+  };
+  next();
+}
+
+export function handlePlayerAction(action: string) {
+  const { battle } = useGameStore.getState();
+  resolveBattleRound(action);
+  if (battle) {
+    drainLog(() => showText(`${partyManager.getLeader()?.name}'s turn!`, showMenu));
+  }
+}
+
+export function startBattleScreen() {
+  renderBattlePanel();
+  showText("An enemy appeared!", () => showText(`${partyManager.getLeader()?.name}'s turn!`, showMenu));
+}
+
+export function initBattleListeners() {
+  dom.battleNextBtn.addEventListener('click', handleBattleNext);
+  dom.battleActionBtns.forEach(btn => {
+    (btn as HTMLElement).addEventListener('click', () => handlePlayerAction((btn as HTMLElement).dataset.action));
+  });
 }

@@ -4,7 +4,7 @@ import { useGameStore } from './state.js';
 import { partyManager } from './state.js';
 import { clamp, pickRandom, cloneStats } from './utils.js';
 import { GamePhase } from './types.js';
-import { resolveBattleRound, renderBattlePanel, appendBattleLog } from './battle.js';
+import { resolveBattleRound, renderBattlePanel, appendBattleLog, startBattleScreen } from './battle.js';
 import { clearEnemyMesh, createOrReplacePlayerMesh, playerMesh } from './scene.js';
 import { setPlayerPosition } from './movement.js';
 import { spawnRoamingEnemies } from './game-logic.js';
@@ -617,11 +617,9 @@ export function switchPhase(phase: GamePhase) {
    } else if (phase === GamePhase.EXPLORATION) {
      updateExplorationHud();
      spawnRoamingEnemies();
-  } else if (phase === GamePhase.BATTLE) {
-    renderBattlePanel();
-  } else if (phase === GamePhase.LOAD) {
-    updateLoadScreen();
-  }
+   } else if (phase === GamePhase.BATTLE) {
+     startBattleScreen();
+   }
 }
 
 export function updateExplorationHud() {

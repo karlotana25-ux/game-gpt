@@ -362,21 +362,8 @@
 
     .battle-layout {
       display: grid;
-      grid-template-columns: 1.2fr 1fr;
+      grid-template-columns: 1fr;
       gap: 12px;
-    }
-
-    .battle-log {
-      height: 220px;
-      overflow: auto;
-      background: rgba(10, 20, 28, 0.86);
-      border-radius: 5px;
-      padding: 8px;
-      box-shadow: inset 0 0 0 2px rgba(185, 236, 211, 0.22);
-      font-size: 20px;
-      color: #e9faef;
-      display: grid;
-      gap: 4px;
     }
 
     .battle-actions {
@@ -385,6 +372,50 @@
       gap: 10px;
       margin-top: 10px;
     }
+
+    /* Sprite field */
+    .sprite-field {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      padding: 20px 32px 12px;
+      margin-bottom: 12px;
+    }
+    .combatant { display: flex; flex-direction: column; align-items: center; gap: 5px; }
+    .battle-sprite {
+      width: 72px;
+      height: 72px;
+      border-radius: 4px;
+      border: 2px solid rgba(185,236,211,0.3);
+      background-repeat: no-repeat;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 28px;
+      font-weight: 700;
+      color: #e9faef;
+      image-rendering: pixelated;
+    }
+    .battle-sprite.flicker { animation: sprite-flicker 0.4s steps(1); }
+    @keyframes sprite-flicker {
+      0%,100% { opacity:1; } 20%,60% { opacity:0.05; } 40%,80% { opacity:0.55; }
+    }
+    .sprite-hp-text { font-size: 11px; color: #9ecfb8; }
+
+    /* Bottom panel */
+    .battle-textbox {
+      min-height: 64px; padding: 12px 14px;
+      background: rgba(10,20,28,0.86); border-radius: 5px;
+      box-shadow: inset 0 0 0 2px rgba(185,236,211,0.22);
+      font-size: 16px; color: #e9faef; line-height: 1.5;
+      margin-bottom: 4px;
+    }
+    .battle-next-row { text-align: right; margin-bottom: 8px; }
+    .next-btn {
+      background: transparent; border: none;
+      color: #9ecfb8; font-size: 13px; cursor: pointer;
+    }
+    .next-btn:hover { color: #e9faef; }
 
     .enemy-banner {
       font-size: 24px;
@@ -601,13 +632,27 @@
           <p id="enemy-stats" class="stat-desc">-</p>
           <div class="hp-bar"><div id="enemy-hp-fill" class="hp-fill" style="width: 100%;"></div></div>
 
-          <div class="battle-layout" style="margin-top: 10px;">
-            <div class="block">
-              <p class="subtitle">Combat Log</p>
-              <div id="battle-log" class="battle-log"></div>
+          <div class="sprite-field">
+            <div class="combatant">
+              <div id="player-sprite" class="battle-sprite"></div>
+              <div class="hp-bar"><div id="player-hp-fill" class="hp-fill" style="width: 100%;"></div></div>
+              <div id="player-hp-text" class="sprite-hp-text">0 / 0</div>
             </div>
+            <div class="combatant">
+              <div id="enemy-sprite" class="battle-sprite"></div>
+              <div class="hp-bar"><div id="enemy-hp-fill" class="hp-fill" style="width: 100%;"></div></div>
+              <div id="enemy-hp-text" class="sprite-hp-text">0 / 0</div>
+            </div>
+          </div>
+
+          <div id="battle-textbox" class="battle-textbox hidden"></div>
+          <div id="battle-next-row" class="battle-next-row hidden">
+            <button id="battle-next-btn" class="next-btn">Next ▶</button>
+          </div>
+
+          <div id="battle-menu" class="battle-layout">
             <div class="block">
-              <p class="subtitle">Actions</p>
+              <p class="subtitle">What will <span id="battle-leader-name">-</span> do?</p>
               <div class="battle-actions">
                 <button class="battle-action-btn" data-action="attack">Attack</button>
                 <button class="battle-action-btn" data-action="magic">Magic</button>
