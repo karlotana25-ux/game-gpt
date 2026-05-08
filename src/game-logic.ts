@@ -92,12 +92,15 @@ export function spawnRoamingEnemies() {
   if (toSpawn <= 0) return;
 
   const newEnemies: RoamingEnemy[] = [];
+  const playerPos = { x: playerMesh.position.x, z: playerMesh.position.z };
+  const minDistance = 8;
+  const maxDistance = config.spawnRadius;
   for (let i = 0; i < toSpawn; i++) {
     const angle = Math.random() * Math.PI * 2;
-    const distance = Math.random() * config.spawnRadius;
+    const distance = minDistance + Math.random() * (maxDistance - minDistance);
     const position = {
-      x: Math.cos(angle) * distance,
-      z: Math.sin(angle) * distance
+      x: clamp(playerPos.x + Math.cos(angle) * distance, -GAME_CONFIG.world.mapHalfExtent + 1, GAME_CONFIG.world.mapHalfExtent - 1),
+      z: clamp(playerPos.z + Math.sin(angle) * distance, -GAME_CONFIG.world.mapHalfExtent + 1, GAME_CONFIG.world.mapHalfExtent - 1)
     };
     const enemy = buildEnemy(shouldSpawnBoss());
     const roamingEnemy: RoamingEnemy = {
