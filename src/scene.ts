@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { Pane } from 'tweakpane';
-import { GAME_CONFIG } from './config.js';
+import { GAME_CONFIG, SPRITE_CONFIG } from './config.js';
+import { SpriteAnimator } from './spriteAnimator.js';
 
 // To avoid too large, keep here for now.
 
@@ -11,11 +12,39 @@ let clock: THREE.Clock;
 let floorMesh: THREE.Mesh;
 let playerMesh: THREE.Mesh;
 let activeEnemyMesh: THREE.Mesh;
+let playerVelocity: THREE.Vector3 = new THREE.Vector3();
+let idleTexture: THREE.Texture;
+let walkTexture: THREE.Texture;
+let playerAnimator: SpriteAnimator;
 const billboardMeshes: THREE.Mesh[] = [];
 
-export { scene, camera, renderer, clock, floorMesh, playerMesh, activeEnemyMesh, billboardMeshes };
+export { scene, camera, renderer, clock, floorMesh, playerMesh, activeEnemyMesh, billboardMeshes, playerVelocity };
 
-export function setupThreeScene(domContainer: HTMLElement) {
+export function loadSpriteTextures(): Promise<void> {
+  const loader = new THREE.TextureLoader();
+  return Promise.all([
+    new Promise<THREE.Texture>((resolve) => {
+      loader.load(SPRITE_CONFIG.idleSheetPath, (texture) => {
+        texture.magFilter = THREE.NearestFilter;
+        texture.minFilter = THREE.NearestFilter;
+        texture.generateMipmaps = false;
+        idleTexture = texture;
+        resolve(texture);
+      });
+    }),
+    new Promise<THREE.Texture>((resolve) => {
+      loader.load(SPRITE_CONFIG.walkSheetPath, (texture) => {
+        texture.magFilter = THREE.NearestFilter;
+        texture.minFilter = THREE.NearestFilter;
+        texture.generateMipmaps = false;
+        walkTexture = texture;
+        resolve(texture);
+      });
+    }),
+  ]).then(() => {});
+}
+
+export async function setupThreeScene(domContainer: HTMLElement) {
   console.log('Setting up scene, krpgMode:', GAME_CONFIG.krpgMode);
   if (GAME_CONFIG.krpgMode) {
     console.log('Using KRPG setup');
@@ -44,6 +73,8 @@ export function setupThreeScene(domContainer: HTMLElement) {
   const sun = new THREE.DirectionalLight("#ffe8bf", 1.05);
   sun.position.set(20, 26, 12);
   scene.add(sun);
+
+  await loadSpriteTextures();
 
   buildWorldGeometry();
   createOrReplacePlayerMesh("Warrior");
@@ -91,13 +122,21 @@ export function createOrReplacePlayerMesh(className: string) {
     removeBillboard(playerMesh);
     scene.remove(playerMesh);
   }
-  const texture = GAME_CONFIG.krpgMode ? createKRPGCharacterTexture() : createCharacterTexture(className);
+  const texture = idleTexture || (GAME_CONFIG.krpgMode ? createKRPGCharacterTexture() : createCharacterTexture(className));
   playerMesh = createBillboardMesh(texture, 2.0, 2.0); // Square mesh for 16-bit
 
-  // Set view to 1/4 of the width and 1/8 of the height
-  const material = playerMesh.material as THREE.MeshBasicMaterial;
-  material.map.repeat.set(1 / 4, 1 / 8);
-  material.map.offset.set(0, 7 / 8); // Start at row 0 (Down)
+  if (idleTexture && walkTexture) {
+    // Use sprite sheet
+    const material = playerMesh.material as THREE.MeshBasicMaterial;
+    material.map.repeat.set(SPRITE_CONFIG.frameWidth, SPRITE_CONFIG.frameHeight);
+    material.map.offset.set(0, (SPRITE_CONFIG.rows - 1 - 0) / SPRITE_CONFIG.rows); // Row 0 (down)
+    playerAnimator = new SpriteAnimator(playerMesh, idleTexture, walkTexture);
+  } else {
+    // Fallback to procedural
+    const material = playerMesh.material as THREE.MeshBasicMaterial;
+    material.map.repeat.set(1 / 4, 1 / 8);
+    material.map.offset.set(0, 7 / 8); // Start at row 0 (Down)
+  }
 
   playerMesh.position.set(0, 1, 0);
   scene.add(playerMesh);
@@ -141,6 +180,16 @@ export function removeBillboard(mesh: THREE.Mesh) {
   if (index >= 0) {
     billboardMeshes.splice(index, 1);
   }
+}
+
+export function getDirectionFromVelocity(vel: THREE.Vector3): string {
+  const threshold = 0.3;
+  const vx = vel.x > threshold ? 1 : vel.x < -threshold ? -1 : 0;
+  const vz = vel.z > threshold ? 1 : vel.z < -threshold ? -1 : 0;
+  if (vx === 0 && vz === 0) return 'down';
+  if (vx === 0) return vz > 0 ? 'up' : 'down';
+  if (vz === 0) return vx > 0 ? 'right' : 'left';
+  return vz > 0 ? (vx > 0 ? 'up-right' : 'up-left') : (vx > 0 ? 'down-right' : 'down-left');
 }
 
 export function createFloorTexture(): THREE.Texture {
@@ -332,13 +381,18 @@ export function renderScene() {
   for (const billboard of billboardMeshes) {
     billboard.lookAt(camera.position.x, billboard.position.y, camera.position.z);
   }
+  if (playerAnimator) {
+    playerAnimator.setMoving(playerVelocity.length() > 0.1);
+    playerAnimator.setDirection(getDirectionFromVelocity(playerVelocity));
+    playerAnimator.update(clock.getDelta());
+  }
   renderer.render(scene, camera);
 }
 
 /**
  * KRPG-STYLE SCENE SETUP WITH WHIMSICAL ELEMENTS
  */
-export function setupKRPGThreeScene(domContainer: HTMLElement) {
+export async function setupKRPGThreeScene(domContainer: HTMLElement) {
   console.log('Initializing KRPG scene');
   scene = new THREE.Scene();
   scene.background = new THREE.Color(GAME_CONFIG.krpgPalette.bg);
@@ -362,6 +416,8 @@ export function setupKRPGThreeScene(domContainer: HTMLElement) {
   const sun = new THREE.DirectionalLight("#fff9e8", 0.8);
   sun.position.set(10, 20, 10);
   scene.add(sun);
+
+  await loadSpriteTextures();
 
   buildKRPGWorld();
   createOrReplacePlayerMesh("Warrior");
@@ -544,6 +600,11 @@ function createKRPGTreeTexture(): THREE.Texture {
 export function renderKRPG() {
   for (const b of billboardMeshes) {
     b.lookAt(camera.position.x, b.position.y, camera.position.z);
+  }
+  if (playerAnimator) {
+    playerAnimator.setMoving(playerVelocity.length() > 0.1);
+    playerAnimator.setDirection(getDirectionFromVelocity(playerVelocity));
+    playerAnimator.update(clock.getDelta());
   }
   renderer.render(scene, camera);
 }

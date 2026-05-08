@@ -1,7 +1,7 @@
 import { useGameStore } from './state.js';
 import { GAME_CONFIG } from './config.js';
 import { clamp } from './utils.js';
-import { camera, playerMesh } from './scene.js';
+import { camera, playerMesh, playerVelocity } from './scene.js';
 import { keysDown } from './ui.js';
 import { triggerEncounterIfNeeded } from './game-logic.js';
 import { updateExplorationHud } from './ui.js';
@@ -34,6 +34,7 @@ export function updateExplorationMovement(delta: number) {
   const vertical = Number(keysDown.has("KeyS") || keysDown.has("ArrowDown")) - Number(keysDown.has("KeyW") || keysDown.has("ArrowUp"));
   isPlayerMoving = horizontal !== 0 || vertical !== 0;
   if (!isPlayerMoving) {
+    playerVelocity.set(0, 0, 0);
     return;
   }
 
@@ -57,6 +58,7 @@ export function updateExplorationMovement(delta: number) {
   }
 
   const moveVector = new THREE.Vector3(horizontal, 0, vertical).normalize();
+  playerVelocity.copy(moveVector).multiplyScalar(GAME_CONFIG.world.moveSpeed);
   const oldX = playerMesh.position.x;
   const oldZ = playerMesh.position.z;
 

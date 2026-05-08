@@ -2,6 +2,29 @@ export const SAVE_KEY = "echoes_tavern_star_save_v1";
 export const FINAL_BOSS_COUNT = 3;
 export const STAT_KEYS = ["strength", "agility", "dexterity", "vitality", "intelligence"];
 
+export const SPRITE_CONFIG = Object.freeze({
+  idleSheetPath: 'assets/FDL/Free Character Sprites - Fantasy Dreamland/RPG Maker/RPG Maker MV/characters/$Char_001_Idle.png',
+  walkSheetPath: 'assets/FDL/Free Character Sprites - Fantasy Dreamland/RPG Maker/RPG Maker MV/characters/$Char_001.png',
+  columns: 3,
+  rows: 4,
+  frameWidth: 1 / 3,
+  frameHeight: 1 / 4,
+  directions: {
+    down: 0,
+    up: 3,
+    left: 2,
+    right: 2,
+    'down-left': 1,
+    'down-right': 1,
+    'up-left': 3,
+    'up-right': 3,
+  },
+  fps: {
+    idle: 4,
+    walk: 8,
+  },
+});
+
 export const STAT_LABELS = {
   strength: "Strength",
   agility: "Agility",
