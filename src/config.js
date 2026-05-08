@@ -11,13 +11,13 @@ export const SPRITE_CONFIG = Object.freeze({
   frameHeight: 1 / 4,
   directions: {
     down: 0,
-    up: 3,
-    left: 2,
+    left: 1,
     right: 2,
+    up: 3,
     'down-left': 1,
     'down-right': 1,
-    'up-left': 3,
-    'up-right': 3,
+    'up-left': 1,
+    'up-right': 2,
   },
   fps: {
     idle: 4,

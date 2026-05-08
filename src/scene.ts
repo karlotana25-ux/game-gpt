@@ -129,7 +129,8 @@ export function createOrReplacePlayerMesh(className: string) {
     // Use sprite sheet
     const material = playerMesh.material as THREE.MeshBasicMaterial;
     material.map.repeat.set(SPRITE_CONFIG.frameWidth, SPRITE_CONFIG.frameHeight);
-    material.map.offset.set(0, (SPRITE_CONFIG.rows - 1 - 0) / SPRITE_CONFIG.rows); // Row 0 (down)
+    const row = SPRITE_CONFIG.directions['down'];
+    material.map.offset.set(0, (SPRITE_CONFIG.rows - 1 - row) / SPRITE_CONFIG.rows); // Default to down
     playerAnimator = new SpriteAnimator(playerMesh, idleTexture, walkTexture);
   } else {
     // Fallback to procedural
@@ -187,9 +188,9 @@ export function getDirectionFromVelocity(vel: THREE.Vector3): string {
   const vx = vel.x > threshold ? 1 : vel.x < -threshold ? -1 : 0;
   const vz = vel.z > threshold ? 1 : vel.z < -threshold ? -1 : 0;
   if (vx === 0 && vz === 0) return 'down';
-  if (vx === 0) return vz > 0 ? 'up' : 'down';
+  if (vx === 0) return vz > 0 ? 'down' : 'up';
   if (vz === 0) return vx > 0 ? 'right' : 'left';
-  return vz > 0 ? (vx > 0 ? 'up-right' : 'up-left') : (vx > 0 ? 'down-right' : 'down-left');
+  return vz > 0 ? (vx > 0 ? 'down-right' : 'down-left') : (vx > 0 ? 'up-right' : 'up-left');
 }
 
 export function createFloorTexture(): THREE.Texture {
@@ -375,6 +376,7 @@ export function handleResize() {
 }
 
 export function renderScene() {
+  const delta = clock.getDelta();
   if (GAME_CONFIG.krpgMode) {
     return renderKRPG();
   }
@@ -384,7 +386,7 @@ export function renderScene() {
   if (playerAnimator) {
     playerAnimator.setMoving(playerVelocity.length() > 0.1);
     playerAnimator.setDirection(getDirectionFromVelocity(playerVelocity));
-    playerAnimator.update(clock.getDelta());
+    playerAnimator.update(delta);
   }
   renderer.render(scene, camera);
 }
@@ -598,13 +600,14 @@ function createKRPGTreeTexture(): THREE.Texture {
 }
 
 export function renderKRPG() {
+  const delta = clock.getDelta();
   for (const b of billboardMeshes) {
     b.lookAt(camera.position.x, b.position.y, camera.position.z);
   }
   if (playerAnimator) {
     playerAnimator.setMoving(playerVelocity.length() > 0.1);
     playerAnimator.setDirection(getDirectionFromVelocity(playerVelocity));
-    playerAnimator.update(clock.getDelta());
+    playerAnimator.update(delta);
   }
   renderer.render(scene, camera);
 }
