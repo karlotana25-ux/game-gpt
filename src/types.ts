@@ -1,3 +1,8 @@
+/**
+ * @fileoverview Type definitions for the game, including stats, characters, enemies, and game state.
+ */
+
+/** Interface for character stats (strength, agility, dexterity, vitality, intelligence). */
 export interface Stats {
   strength: number;
   agility: number;
@@ -6,12 +11,14 @@ export interface Stats {
   intelligence: number;
 }
 
+/** Interface for weapon items with stat bonuses. */
 export interface Weapon {
   id: string;
   name: string;
   bonuses: Partial<Stats>;
 }
 
+/** Interface for spells with MP cost, type, power, and intelligence requirement. */
 export interface Spell {
   id: string;
   name: string;
@@ -21,6 +28,7 @@ export interface Spell {
   requiresInt: number;
 }
 
+/** Interface for party members, including stats, equipment, spells, and combat state. */
 export interface PartyMember {
   id: string;
   name: string;
@@ -38,6 +46,7 @@ export interface PartyMember {
   guard: boolean;
 }
 
+/** Game phase constants for different screens/states in the game. */
 export const GamePhase = {
   MAIN_MENU: 'main_menu',
   CHARACTER_CREATION: 'character_creation',
@@ -51,8 +60,10 @@ export const GamePhase = {
   TAVERN: 'tavern'
 } as const;
 
+/** Type for game phases, derived from GamePhase object. */
 export type GamePhase = typeof GamePhase[keyof typeof GamePhase];
 
+/** Interface for character creation state, tracking class, stats allocation. */
 export interface CreationState {
   className: string;
   baseStats: Stats;
@@ -60,6 +71,7 @@ export interface CreationState {
   pointsRemaining: number;
 }
 
+/** Interface for enemies, including stats, HP, rewards, and combat bonuses. */
 export interface Enemy {
   id: string;
   name: string;
@@ -77,6 +89,7 @@ export interface Enemy {
   spriteKey?: string;
 }
 
+/** Interface for roaming enemies in exploration, with position, velocity, and timing. */
 export interface RoamingEnemy {
   id: string;
   enemy: Enemy;
@@ -86,14 +99,17 @@ export interface RoamingEnemy {
   spawnTime: number;
 }
 
+/** Type for possible battle outcomes. */
 export type BattleResult = "escape" | "victory" | "monster_win" | "boss_win" | "party_defeat";
 
+/** Interface for battle state, tracking current enemy, round, and combat log. */
 export interface BattleState {
   enemy: Enemy;
   round: number;
   log: string[];
 }
 
+/** Interface for the overall game state, used in Zustand store. */
 export interface GameState {
   phase: GamePhase;
   creation: CreationState;

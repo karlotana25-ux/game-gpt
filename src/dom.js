@@ -1,5 +1,10 @@
+/**
+ * @fileoverview DOM element references for UI manipulation across different game phases.
+ */
+
 import { GAME_PHASE } from "./config.js";
 
+/** Mapping of game phases to corresponding screen element IDs. */
 export const SCREEN_BY_PHASE = {
   [GAME_PHASE.MAIN_MENU]: "screen-main-menu",
   [GAME_PHASE.CHARACTER_CREATION]: "screen-character",
@@ -12,6 +17,7 @@ export const SCREEN_BY_PHASE = {
   [GAME_PHASE.ENDING]: "screen-ending"
 };
 
+/** Object containing cached references to DOM elements for efficient access. */
 export const dom = {
   sceneContainer: document.getElementById("scene-container"),
   eventBanner: document.getElementById("event-banner"),

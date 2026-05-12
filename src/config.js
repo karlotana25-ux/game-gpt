@@ -1,7 +1,15 @@
+/**
+ * @fileoverview Game configuration constants for sprites, stats, classes, enemies, world settings, and more.
+ */
+
+/** LocalStorage key for saving game data. */
 export const SAVE_KEY = "echoes_tavern_star_save_v1";
+/** Number of bosses required to defeat for game completion. */
 export const FINAL_BOSS_COUNT = 3;
+/** Array of stat keys for iteration and validation. */
 export const STAT_KEYS = ["strength", "agility", "dexterity", "vitality", "intelligence"];
 
+/** Configuration for enemy sprites, including paths, frame sizes, and animations. */
 export const ENEMY_SPRITE_CONFIG = Object.freeze({
   slime: {
     path: './assets/Slime_Medium_Green.png',
@@ -16,6 +24,7 @@ export const ENEMY_SPRITE_CONFIG = Object.freeze({
   }
 });
 
+/** Configuration for player sprite sheets, including paths, dimensions, directions, and FPS. */
 export const SPRITE_CONFIG = Object.freeze({
   idleSheetPath: 'assets/FDL/Free Character Sprites - Fantasy Dreamland/RPG Maker/RPG Maker MV/characters/$Char_001_Idle.png',
   walkSheetPath: 'assets/FDL/Free Character Sprites - Fantasy Dreamland/RPG Maker/RPG Maker MV/characters/$Char_001.png',
@@ -39,6 +48,7 @@ export const SPRITE_CONFIG = Object.freeze({
   },
 });
 
+/** Human-readable labels for stats. */
 export const STAT_LABELS = {
   strength: "Strength",
   agility: "Agility",
