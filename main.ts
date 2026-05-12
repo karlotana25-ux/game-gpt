@@ -3,6 +3,7 @@ import { setupUI } from "./src/ui.js";
 import { updateExplorationMovement } from "./src/movement.js";
 import { updateAnimation } from "./src/animation.js";
 import { initBattleListeners } from "./src/battle.js";
+import { GAME_CONFIG } from "./src/config.js";
 
 bootstrap();
 
@@ -18,7 +19,9 @@ function animate() {
 
   const delta = clock.getDelta();
   updateExplorationMovement(delta);
-  updateAnimation(delta);
+  if (!GAME_CONFIG.krpgMode) {
+    updateAnimation(delta);
+  }
 
   renderScene();
 }

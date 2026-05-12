@@ -22,25 +22,44 @@ export { scene, camera, renderer, clock, floorMesh, playerMesh, enemyMeshes, bil
 export function loadSpriteTextures(): Promise<void> {
   const loader = new THREE.TextureLoader();
   return Promise.all([
-    new Promise<THREE.Texture>((resolve) => {
-      loader.load(SPRITE_CONFIG.idleSheetPath, (texture) => {
-        texture.magFilter = THREE.NearestFilter;
-        texture.minFilter = THREE.NearestFilter;
-        texture.generateMipmaps = false;
-        idleTexture = texture;
-        resolve(texture);
-      });
+    new Promise<THREE.Texture>((resolve, reject) => {
+      loader.load(
+        SPRITE_CONFIG.idleSheetPath,
+        (texture) => {
+          texture.magFilter = THREE.NearestFilter;
+          texture.minFilter = THREE.NearestFilter;
+          texture.generateMipmaps = false;
+          idleTexture = texture;
+          resolve(texture);
+        },
+        undefined,
+        (error) => {
+          console.error('Failed to load idle sprite texture:', SPRITE_CONFIG.idleSheetPath, error);
+          reject(error);
+        }
+      );
     }),
-    new Promise<THREE.Texture>((resolve) => {
-      loader.load(SPRITE_CONFIG.walkSheetPath, (texture) => {
-        texture.magFilter = THREE.NearestFilter;
-        texture.minFilter = THREE.NearestFilter;
-        texture.generateMipmaps = false;
-        walkTexture = texture;
-        resolve(texture);
-      });
+    new Promise<THREE.Texture>((resolve, reject) => {
+      loader.load(
+        SPRITE_CONFIG.walkSheetPath,
+        (texture) => {
+          texture.magFilter = THREE.NearestFilter;
+          texture.minFilter = THREE.NearestFilter;
+          texture.generateMipmaps = false;
+          walkTexture = texture;
+          resolve(texture);
+        },
+        undefined,
+        (error) => {
+          console.error('Failed to load walk sprite texture:', SPRITE_CONFIG.walkSheetPath, error);
+          reject(error);
+        }
+      );
     }),
-  ]).then(() => {});
+  ]).then(() => {}).catch(() => {
+    // Graceful fallback: textures remain undefined, triggering procedural fallback
+    console.warn('Sprite textures failed to load; falling back to procedural player mesh');
+  });
 }
 
 export async function setupThreeScene(domContainer: HTMLElement) {
